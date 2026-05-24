@@ -118,19 +118,29 @@ checks parser smoke, one-byte streaming equivalence, and parse/encode stability
 properties. It is process-oriented rather than an in-process libFuzzer entry
 point, so AFL++ stdin mode is the documented path for now.
 
-Build a non-instrumented smoke binary and run one tiny escaped-IAC input:
+Run the checked native validation helper for a fast local probe:
+
+```sh
+tools/check-fuzz-native.sh
+```
+
+The helper builds a non-instrumented binary, runs one tiny escaped-IAC stdin
+input, then detects `afl-fuzz` and `afl-clang-fast`. When AFL++ is installed it
+builds an instrumented binary and runs a bounded stdin-mode smoke session against
+`tools/fuzz-corpus/seeds/`; when AFL++ is unavailable it reports the exact missing
+tool and exits successfully unless `REQUIRE_AFL=1` is set. Tune the bounded AFL++
+probe with `AFL_SMOKE_SECONDS`, `AFL_OUT`, `AFL_FUZZ`, `AFL_CC`,
+`AFL_NATIVE_BIN`, and `FUZZ_SEED_DIR`.
+
+Manual equivalent commands are:
 
 ```sh
 tools/build-fuzz-native.sh
 printf '\377\377' | _build/fuzz-native/telnet-fuzz-native
-```
 
-Build with AFL++ instrumentation and start a stdin-mode run:
-
-```sh
-CC=afl-clang-fast tools/build-fuzz-native.sh
-afl-fuzz -i tools/fuzz-corpus/seeds -o _build/fuzz-findings -- \
-  _build/fuzz-native/telnet-fuzz-native
+CC=afl-clang-fast tools/build-fuzz-native.sh _build/fuzz-native/telnet-fuzz-native-afl
+afl-fuzz -V 5 -i tools/fuzz-corpus/seeds -o _build/fuzz-findings/native-smoke -- \
+  _build/fuzz-native/telnet-fuzz-native-afl
 ```
 
 Keep coverage-guided findings under `_build/` or another ignored directory. Do
