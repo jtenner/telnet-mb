@@ -723,9 +723,13 @@ pub fn Encoder::encode_data(
       Some(e) => return e
       None => ()
     }
-    for i = 0; i < data.length; i = i + 1 {
-      setb(output, i, data.bytes[data.start + i])
-    }
+    FixedArray::blit_from_bytes(
+      unsafe_bytes_to_fixedarray(output),
+      0,
+      data.bytes,
+      data.start,
+      data.length,
+    )
     return Ok(EncodeResult::{
       bytes_written: data.length,
       required_capacity: data.length,
@@ -1246,9 +1250,13 @@ pub fn ByteSpan::is_empty(self : ByteSpan) -> Bool {
 ///|
 pub fn ByteSpan::to_bytes(self : ByteSpan) -> Bytes {
   let output = Bytes::new(self.length)
-  for i = 0; i < self.length; i = i + 1 {
-    setb(output, i, self.bytes[self.start + i])
-  }
+  FixedArray::blit_from_bytes(
+    unsafe_bytes_to_fixedarray(output),
+    0,
+    self.bytes,
+    self.start,
+    self.length,
+  )
   output
 }
 
@@ -1276,11 +1284,10 @@ fn span_ascii_string(
 
 ///|
 fn write_ascii_string(output : Bytes, start : Int, s : String) -> Int {
-  let chars = s.to_array()
-  for i = 0; i < chars.length(); i = i + 1 {
-    setb(output, start + i, b(chars[i].to_int()))
+  for i = 0; i < s.length(); i = i + 1 {
+    setb(output, start + i, b(s.unsafe_get(i).to_int()))
   }
-  chars.length()
+  s.length()
 }
 
 ///|
