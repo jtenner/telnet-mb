@@ -17,6 +17,7 @@ public APIs should point back here before code is merged.
 - [08-test-first-type-scope.md](08-test-first-type-scope.md) — test-first API surface and performance-oriented type inventory.
 - [09-verification-corpus.md](09-verification-corpus.md) — provenance and coverage notes for the initial test-fixture corpus.
 - [conformance-matrix.md](conformance-matrix.md) — requirement-to-test traceability matrix.
+- [api-contract.md](api-contract.md) — public parser, encoder, negotiator, mapping, and option-codec API skeleton.
 
 ## Rules for maintaining the wiki
 

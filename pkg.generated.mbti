@@ -26,6 +26,9 @@ pub(all) struct ByteSpan {
   start : Int
   length : Int
 } derive(Eq, @debug.Debug)
+pub fn ByteSpan::is_empty(Self) -> Bool
+pub fn ByteSpan::new(Bytes, Int, Int) -> Self
+pub fn ByteSpan::to_bytes(Self) -> Bytes
 
 pub(all) enum CharsetMessage {
   Request(Array[String])
@@ -36,6 +39,8 @@ pub(all) enum CharsetMessage {
   TTableAck
   TTableNak
 } derive(Eq, @debug.Debug)
+pub fn CharsetMessage::decode(ByteSpan) -> Result[Self, TelnetError]
+pub fn CharsetMessage::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
 
 pub(all) enum Command {
   SE
@@ -55,6 +60,8 @@ pub(all) enum Command {
   DONT
   IAC
 } derive(Eq, @debug.Debug)
+pub fn Command::from_byte(Byte) -> Self?
+pub fn Command::to_byte(Self) -> Byte
 
 pub(all) struct CommandEvent {
   command : Command
@@ -97,11 +104,30 @@ pub(all) enum EncodeItem {
   Subnegotiation(SubnegotiationEvent)
 } derive(Eq, @debug.Debug)
 
+pub(all) struct EncodeResult {
+  bytes_written : Int
+  required_capacity : Int
+} derive(Eq, @debug.Debug)
+
+pub(all) struct Encoder {
+  canonical : Bool
+} derive(Eq, @debug.Debug)
+pub fn Encoder::canonical() -> Self
+pub fn Encoder::encode_command(Self, Command, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn Encoder::encode_data(Self, ByteSpan, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn Encoder::encode_item(Self, EncodeItem, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn Encoder::encode_negotiation(Self, NegotiationEvent, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn Encoder::encode_subnegotiation(Self, SubnegotiationEvent, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn Encoder::new() -> Self
+pub fn Encoder::required_capacity(Self, EncodeItem) -> Int
+
 pub(all) enum EnvironmentMessage {
   Is(Array[EnvironmentVariable])
   Send(Array[String])
   Info(Array[EnvironmentVariable])
 } derive(Eq, @debug.Debug)
+pub fn EnvironmentMessage::decode(ByteSpan) -> Result[Self, TelnetError]
+pub fn EnvironmentMessage::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
 
 pub(all) struct EnvironmentVariable {
   kind : EnvironmentVariableKind
@@ -183,6 +209,8 @@ pub(all) enum KnownOption {
   ExtendedOptionsList
   Unknown(OptionCode)
 } derive(Eq, @debug.Debug)
+pub fn KnownOption::from_code(OptionCode) -> Self
+pub fn KnownOption::to_code(Self) -> OptionCode
 
 pub(all) enum LinemodeForwardMask {
   Default
@@ -195,6 +223,8 @@ pub(all) enum LinemodeMessage {
   ForwardMask(LinemodeForwardMask)
   Slc(ByteSpan)
 } derive(Eq, @debug.Debug)
+pub fn LinemodeMessage::decode(ByteSpan) -> Result[Self, TelnetError]
+pub fn LinemodeMessage::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
 
 pub(all) struct LinemodeMode {
   flags : Array[LinemodeModeFlag]
@@ -212,6 +242,8 @@ pub(all) struct NawsSize {
   columns : UInt16
   rows : UInt16
 } derive(Eq, @debug.Debug)
+pub fn NawsSize::decode(ByteSpan) -> Result[Self, TelnetError]
+pub fn NawsSize::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
 
 pub(all) enum NegotiationAction {
   Send(NegotiationEvent)
@@ -240,10 +272,24 @@ pub(all) enum NegotiationVerb {
   Do
   Dont
 } derive(Eq, @debug.Debug)
+pub fn NegotiationVerb::from_command(Command) -> Self?
+pub fn NegotiationVerb::to_command(Self) -> Command
+
+pub(all) struct Negotiator {
+  states : Array[OptionState]
+} derive(Eq, @debug.Debug)
+pub fn Negotiator::apply(Self, NegotiationTransition) -> Self
+pub fn Negotiator::new() -> Self
+pub fn Negotiator::receive(Self, NegotiationEvent, PolicyDecision) -> NegotiationTransition
+pub fn Negotiator::request(Self, OptionCode, OptionSide, Bool) -> NegotiationTransition
+pub fn Negotiator::state_for(Self, OptionCode) -> OptionState
+pub fn Negotiator::with_states(Array[OptionState]) -> Self
 
 pub(all) struct OptionCode {
   value : Byte
 } derive(Eq, @debug.Debug)
+pub fn OptionCode::new(Byte) -> Self
+pub fn OptionCode::to_byte(Self) -> Byte
 
 pub(all) struct OptionHalf {
   option : OptionCode
@@ -261,6 +307,9 @@ pub(all) enum OptionPayload {
   Linemode(LinemodeMessage)
   StartTls(StartTlsMessage)
 } derive(Eq, @debug.Debug)
+pub fn OptionPayload::decode(OptionCode, ByteSpan) -> Result[Self, TelnetError]
+pub fn OptionPayload::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn OptionPayload::required_capacity(Self) -> Int
 
 pub(all) enum OptionSide {
   Local
@@ -272,6 +321,21 @@ pub(all) struct OptionState {
   local_state : HalfState
   remote_state : HalfState
 } derive(Eq, @debug.Debug)
+
+pub(all) struct Parser {
+  config : ParserConfig
+  checkpoint : ParserCheckpoint
+} derive(Eq, @debug.Debug)
+pub fn Parser::checkpoint(Self) -> ParserCheckpoint
+pub fn Parser::default() -> Self
+pub fn Parser::default_config() -> ParserConfig
+pub fn Parser::feed(Self, Bytes) -> ParserFeedResult
+pub fn Parser::feed_span(Self, ByteSpan) -> ParserFeedResult
+pub fn Parser::finish(Self) -> ParserFinishResult
+pub fn Parser::new(ParserConfig) -> Self
+pub fn Parser::reset(Self) -> Self
+pub fn Parser::restore(ParserConfig, ParserCheckpoint) -> Self
+pub fn Parser::with_config(Self, ParserConfig) -> Self
 
 pub(all) struct ParserCheckpoint {
   mode : ParserMode
@@ -286,6 +350,18 @@ pub(all) struct ParserConfig {
   cr_policy : CrPolicy
   data_coalescing : DataCoalescing
   strict_commands : Bool
+} derive(Eq, @debug.Debug)
+
+pub(all) struct ParserFeedResult {
+  parser : Parser
+  events : Array[Event]
+  bytes_consumed : Int
+} derive(Eq, @debug.Debug)
+
+pub(all) struct ParserFinishResult {
+  parser : Parser
+  events : Array[Event]
+  complete : Bool
 } derive(Eq, @debug.Debug)
 
 pub(all) enum ParserMode {
@@ -323,6 +399,8 @@ pub(all) enum StartTlsMessage {
   StartTls
   Follows
 } derive(Eq, @debug.Debug)
+pub fn StartTlsMessage::decode(ByteSpan) -> Result[Self, TelnetError]
+pub fn StartTlsMessage::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
 
 pub(all) struct SubnegotiationEvent {
   option : OptionCode
@@ -352,6 +430,8 @@ pub(all) enum TerminalTypeMessage {
   Send
   Is(String)
 } derive(Eq, @debug.Debug)
+pub fn TerminalTypeMessage::decode(ByteSpan) -> Result[Self, TelnetError]
+pub fn TerminalTypeMessage::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
 
 // Type aliases
 
