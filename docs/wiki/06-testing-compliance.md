@@ -16,10 +16,14 @@
 
 ## Fuzzing notes
 
+See [10-fuzzing.md](10-fuzzing.md) for the maintained fuzzing command guide,
+property inventory, reproduction workflow, and seed-corpus rules.
+
 The deterministic fuzz tests in `telnet_fuzz_test.mbt` keep default `moon test`
 runs fast while covering parser smoke behavior, streaming equivalence, canonical
 encode/parse stability, IAC escaping, subnegotiation boundaries, negotiation
-state invariants, option/command catalog coverage, and NVT CR/LF/NUL handling.
+state invariants, option/command catalog coverage, differential checks, performance
+guardrails, and NVT CR/LF/NUL handling.
 
 The core parser does not currently track negotiated BINARY session state. Fuzz
 coverage therefore treats `CrPolicy::Preserve` as the binary-like parser mode:
