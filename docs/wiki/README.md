@@ -14,6 +14,7 @@ public APIs should point back here before code is merged.
 - [05-moonbit-architecture.md](05-moonbit-architecture.md) — proposed package structure and public API shape.
 - [06-testing-compliance.md](06-testing-compliance.md) — compliance tests, fixtures, fuzz/property strategy.
 - [07-maintenance.md](07-maintenance.md) — wiki stewardship, source updates, release checklist.
+- [08-test-first-type-scope.md](08-test-first-type-scope.md) — test-first API surface and performance-oriented type inventory.
 
 ## Rules for maintaining the wiki
 
