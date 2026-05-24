@@ -55,6 +55,13 @@ local pass with:
 moon run cmd/fuzz
 ```
 
+For CI, use the named bounded profile. It uses seed `20260524`, 4096 iterations,
+maximum generated wire length 192, and target `all`:
+
+```sh
+moon run cmd/fuzz -- ci
+```
+
 For a reproducible custom run, pass positional arguments after `--`:
 
 ```sh
@@ -65,7 +72,8 @@ moon run cmd/fuzz -- <seed> <iterations> <max-length> <target>
 prints the selected seed, iteration count, maximum generated wire length, target,
 and a final checksum. On failure it prints `target=... seed=... iteration=...
 max_length=... wire=bytes([...])` so the wire can be copied into a named
-regression test.
+regression test. The GitHub Actions workflow in `.github/workflows/ci.yml` runs
+`moon info`, `moon fmt --check`, `moon test`, and the CI fuzz profile.
 
 ## Minimum completion criteria for each option
 

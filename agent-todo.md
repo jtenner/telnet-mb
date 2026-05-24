@@ -13,42 +13,35 @@ Before and after code changes, follow `AGENTS.md`: run `moon info && moon fmt` a
 
 ## Latest completed slice
 
-- Completed slice 14, separate long-running fuzz command/package, on 2026-05-24.
-- Added `cmd/fuzz` as a runnable deterministic fuzzer configurable with positional arguments: seed, iterations, max length, and target (`all`, `smoke`, `streaming`, or `stability`).
-- The command exercises parser smoke invariants across representative parser configs, streaming equivalence, and parse/encode stability without changing the fast default `moon test` suite.
-- Added `docs/wiki/06-testing-compliance.md` invocation and failure-reproduction notes for `moon run cmd/fuzz`.
+- Completed slice 15, CI-friendly fuzz mode, on 2026-05-24.
+- Added a bounded `moon run cmd/fuzz -- ci` profile using seed `20260524`, 4096 iterations, max generated wire length 192, and target `all`.
+- Added `.github/workflows/ci.yml` to run `moon info`, `moon fmt --check`, `moon test`, and the CI fuzz profile on push, pull request, or manual dispatch.
+- Documented the CI fuzz profile and workflow in `docs/wiki/06-testing-compliance.md` while keeping the fast default `moon test` suite unchanged.
 - No production parser bug was exposed in this slice.
-- Remaining follow-ups: continue with slice 15 (CI-friendly fuzz mode), slice 16 (coverage-guided fuzzing research), slice 17 (performance/allocation guardrails), slice 18 (differential reference checks), slice 19 (broader fuzz documentation), slice 20 (regression backlog cleanup), and slice 21 (helper deduplication research).
+- Remaining follow-ups: continue with slice 16 (coverage-guided fuzzing research), slice 17 (performance/allocation guardrails), slice 18 (differential reference checks), slice 19 (broader fuzz documentation), slice 20 (regression backlog cleanup), and slice 21 (helper deduplication research).
 - Reproduction seeds/details:
   - No new fuzz failure seed was discovered.
-  - Default command verification used `seed=424242 iterations=1024 max_length=128 target=all` and reported checksum `514624`.
-  - Argument parsing/reproduction verification used `seed=7 iterations=8 max_length=16 target=streaming` with checksum `25`, and `seed=11 iterations=8 max_length=16 target=stability` with checksum `48`.
-  - Failure lines from the command include `target=... seed=... iteration=... max_length=... wire=bytes([...])` for copying into named regression tests.
+  - CI profile verification used `seed=20260524 iterations=4096 max_length=192 target=all` and reported checksum `3019894`.
+  - Default command verification still used `seed=424242 iterations=1024 max_length=128 target=all` and reported checksum `514624`.
+  - Positional argument compatibility verification used `seed=7 iterations=8 max_length=16 target=streaming` and reported checksum `25`.
+  - Failure lines from the command continue to include `target=... seed=... iteration=... max_length=... wire=bytes([...])` for copying into named regression tests.
 - Commands run:
-  - `git status --short && echo '--- recent commits ---' && git log --oneline -8`
-  - `moon run cmd/fuzz` during implementation: first failed on `moon.pkg` import separator syntax, then failed on command-package `byte(...)`/custom `to_string()` usage; both issues were fixed.
-  - `moon run cmd/fuzz` after fixes: passed with checksum `514624`.
-  - `moon run cmd/fuzz -- 7 8 16 streaming` during implementation exposed that `@env.args()` includes argv0; argument offset was fixed.
-  - `moon run cmd/fuzz -- 7 8 16 streaming`: passed with checksum `25`.
+  - `git status --short && echo '---RECENT---' && git log --oneline -5`
+  - `moon fmt --help | head -60 && echo '---' && moon test --help | head -40 && echo '---' && moon run --help | head -30`
+  - `git status --short && git diff --stat`
+  - `moon run cmd/fuzz -- ci`: passed with checksum `3019894`.
   - `moon info && moon fmt`
-  - `git status --short && git diff --stat && git diff -- cmd/fuzz/main.mbt | head -120 && find cmd/fuzz -maxdepth 1 -type f -print -exec ls -l {} \\;`
+  - `git status --short && git diff --stat && git diff -- cmd/fuzz/pkg.generated.mbti cmd/fuzz/main.mbt .github/workflows/ci.yml docs/wiki/06-testing-compliance.md agent-todo.md | sed -n '1,240p'`
   - `moon test`: 871 passed.
-  - `moon run cmd/fuzz && moon run cmd/fuzz -- 7 8 16 streaming && moon run cmd/fuzz -- 11 8 16 stability && git diff --check`: all fuzz commands passed; `git diff --check` passed.
-  - `moon info && moon fmt && moon test && moon run cmd/fuzz -- 7 8 16 streaming && git diff --check && git status --short`: 871 tests passed; streaming command checksum `25`; working tree contained this slice's docs, todo, and `cmd/fuzz` changes.
+  - `moon run cmd/fuzz && moon run cmd/fuzz -- ci && moon run cmd/fuzz -- 7 8 16 streaming && git diff --check`: fuzz commands passed with checksums `514624`, `3019894`, and `25`; `git diff --check` reported a generated `cmd/fuzz/pkg.generated.mbti` blank line at EOF, which was removed.
+  - `moon info && git diff --check -- cmd/fuzz/pkg.generated.mbti && git diff -- cmd/fuzz/pkg.generated.mbti`: `moon info` had no work; `git diff --check` still reported the same blank line before the file was normalized.
+  - `git status --short && git diff --stat`
+  - `moon info && moon fmt && moon test && moon run cmd/fuzz -- ci && git diff --check && git status --short`: `moon info`, `moon fmt`, `moon test` (871 passed), and the CI fuzz profile (checksum `3019894`) passed; `git diff --check` again reported the generated `cmd/fuzz/pkg.generated.mbti` blank line, which was normalized.
+  - `moon fmt --check; code=$?; echo fmt_check_exit=$code; git diff --check -- cmd/fuzz/pkg.generated.mbti; diff_code=$?; echo diff_check_exit=$diff_code; git diff -- cmd/fuzz/pkg.generated.mbti | tail -20; exit 0`: `moon fmt --check` and the generated-interface whitespace check passed after normalization.
+  - `moon fmt --check && moon test && moon run cmd/fuzz -- ci && git diff --check && git status --short`: formatting check passed, 871 tests passed, CI fuzz checksum `3019894`, and whitespace check passed.
+  - `git diff --check && git status --short && git diff --stat && git diff -- . ':!agent-todo.md' | sed -n '1,260p'`: whitespace check passed and the final code/docs diff was reviewed.
 
 ## Active work slices
-
-### 15. CI-friendly fuzz mode
-
-- Add a moderately larger fuzz run suitable for CI if project CI exists.
-- Keep runtime bounded and configurable.
-- Ensure failures are deterministic and reproducible.
-- Avoid flaky timing-based assertions.
-
-Acceptance criteria:
-
-- CI can run the fuzzer without excessive runtime.
-- Local fast tests remain fast.
 
 ### 16. Coverage-guided fuzzing research spike
 

@@ -1,0 +1,38 @@
+name: MoonBit CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-and-fuzz:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Show MoonBit version
+        run: moon version --all
+
+      - name: Generate package interfaces
+        run: moon info
+
+      - name: Check formatting
+        run: moon fmt --check
+
+      - name: Run tests
+        run: moon test
+
+      - name: Run CI fuzz profile
+        run: moon run cmd/fuzz -- ci
+
+      - name: Ensure generated files are committed
+        run: git diff --exit-code

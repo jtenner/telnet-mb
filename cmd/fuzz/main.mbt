@@ -10,6 +10,14 @@
 
 ///|
 
+///| CI-friendly deterministic run:
+
+///|
+
+///|   moon run cmd/fuzz -- ci
+
+///|
+
 ///| Configurable extended run:
 
 ///|
@@ -625,25 +633,39 @@ fn fuzz_user_args(args : Array[String]) -> Array[String] {
 }
 
 ///|
+fn fuzz_ci_settings() -> FuzzSettings {
+  FuzzSettings::{
+    seed: 20260524,
+    iterations: 4096,
+    max_length: 192,
+    target: FuzzTarget::All,
+  }
+}
+
+///|
 fn fuzz_settings_from_args(args : Array[String]) -> FuzzSettings {
   let user_args = fuzz_user_args(args)
-  let seed = fuzz_parse_int_arg(user_args, 0, 424242)
-  let iterations = fuzz_parse_int_arg(user_args, 1, 1024)
-  let max_length = fuzz_parse_int_arg(user_args, 2, 128)
-  let target = fuzz_parse_target(fuzz_arg_or(user_args, 3, "all"))
-  FuzzSettings::{
-    seed,
-    iterations: if iterations < 0 {
-      0
-    } else {
-      iterations
-    },
-    max_length: if max_length < 0 {
-      0
-    } else {
-      max_length
-    },
-    target,
+  if user_args.length() > 0 && user_args[0] == "ci" {
+    fuzz_ci_settings()
+  } else {
+    let seed = fuzz_parse_int_arg(user_args, 0, 424242)
+    let iterations = fuzz_parse_int_arg(user_args, 1, 1024)
+    let max_length = fuzz_parse_int_arg(user_args, 2, 128)
+    let target = fuzz_parse_target(fuzz_arg_or(user_args, 3, "all"))
+    FuzzSettings::{
+      seed,
+      iterations: if iterations < 0 {
+        0
+      } else {
+        iterations
+      },
+      max_length: if max_length < 0 {
+        0
+      } else {
+        max_length
+      },
+      target,
+    }
   }
 }
 
