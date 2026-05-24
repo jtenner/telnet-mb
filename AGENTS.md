@@ -4,7 +4,7 @@ MoonBit TELNET protocol library: `moonbit-telnet/telnet`.
 
 ## Repository map
 
-- `moon.mod.json` — module metadata.
+- `moon.mod` — module metadata.
 - `moon.pkg` — root library package manifest.
 - `telnet.mbt` — public TELNET model/types.
 - `api.mbt` — parser, encoder, negotiator, option mapping, and codecs.
