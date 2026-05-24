@@ -13,7 +13,20 @@ moon fmt
 moon info
 moon test
 moon run cmd/main
+moon run --target js cmd/bench
+moon run --target native cmd/bench
 ```
+
+## Benchmarks
+
+A runnable benchmark package lives in [`cmd/bench`](cmd/bench). It supports JavaScript timing via `performance.now()` and native timing via a small monotonic-clock C stub:
+
+```sh
+moon run --target js cmd/bench
+moon run --target native cmd/bench
+```
+
+The runner reports elapsed milliseconds, operations/second, approximate MB/s for byte-oriented workloads, and a checksum for each benchmark.
 
 ## Documentation
 

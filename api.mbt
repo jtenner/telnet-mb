@@ -518,7 +518,7 @@ fn span_required(span : ByteSpan, escaped : Bool) -> Int {
 }
 
 ///|
-pub fn Encoder::required_capacity(self : Encoder, item : EncodeItem) -> Int {
+pub fn Encoder::required_capacity(_self : Encoder, item : EncodeItem) -> Int {
   match item {
     EncodeItem::RawData(s) => s.length
     EncodeItem::EscapedData(s) => span_required(s, true)
@@ -600,7 +600,7 @@ pub fn Encoder::encode_data(
 
 ///|
 pub fn Encoder::encode_command(
-  self : Encoder,
+  _self : Encoder,
   command : Command,
   output : Bytes,
 ) -> Result[EncodeResult, EncodeError] {
@@ -630,7 +630,7 @@ pub fn Encoder::encode_command(
 
 ///|
 pub fn Encoder::encode_negotiation(
-  self : Encoder,
+  _self : Encoder,
   event : NegotiationEvent,
   output : Bytes,
 ) -> Result[EncodeResult, EncodeError] {
@@ -646,7 +646,7 @@ pub fn Encoder::encode_negotiation(
 
 ///|
 pub fn Encoder::encode_subnegotiation(
-  self : Encoder,
+  _self : Encoder,
   event : SubnegotiationEvent,
   output : Bytes,
 ) -> Result[EncodeResult, EncodeError] {
@@ -1103,14 +1103,6 @@ fn span_ascii_string(
     chars.push(by.to_char())
   }
   Ok(String::from_array(chars))
-}
-
-///|
-fn decode_known_string(payload : ByteSpan, start : Int) -> String {
-  match span_ascii_string(payload, start, payload.length - start) {
-    Ok(s) => s
-    Err(_) => ""
-  }
 }
 
 ///|
