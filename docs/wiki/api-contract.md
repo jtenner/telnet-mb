@@ -93,6 +93,13 @@ Specific codec namespaces:
 - `LinemodeMessage::decode/encode`
 - `StartTlsMessage::decode/encode`
 
+## Behavioral TDD coverage
+
+The public placeholder APIs are now exercised by two direct behavioral suites:
+
+- `telnet_behavior_tdd_test.mbt` covers baseline parser, encoder, negotiator, mapping-helper, and option-codec behavior.
+- `telnet_expanded_behavior_tdd_test.mbt` covers remaining blind spots: exhaustive representative parser split points, CR policy chunk boundaries, coalescing policies, strict/lenient invalid IAC recovery, malformed subnegotiation recovery, RFC 1143 queued-state negotiation, encoder atomicity/capacity formulas, raw-data bypass, malformed option codecs, and broader mapping-helper round trips.
+
 ## Placeholder policy
 
-All placeholder bodies must be replaced before release. Until then, `moon check` warns about unfinished code and `moon test` is expected to fail because `telnet_behavior_tdd_test.mbt` calls these APIs directly. This is intentional TDD pressure: the API is visible in the generated interface, and the behavioral tests describe the production work still required.
+All placeholder bodies must be replaced before release. Until then, `moon check` warns about unfinished code and `moon test` is expected to fail because `telnet_behavior_tdd_test.mbt` and `telnet_expanded_behavior_tdd_test.mbt` call these APIs directly. This is intentional TDD pressure: the API is visible in the generated interface, and the behavioral tests describe the production work still required.
