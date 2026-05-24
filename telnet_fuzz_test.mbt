@@ -862,3 +862,163 @@ test "encoder parser roundtrip fuzz covers generated valid streams" {
     )
   }
 }
+
+///|
+fn fuzz_span_from_bytes(data : Bytes) -> @telnet.ByteSpan {
+  @telnet.ByteSpan::{ bytes: data, start: 0, length: data.length() }
+}
+
+///|
+fn fuzz_observation_has_error(observation : FuzzParseObservation) -> Bool {
+  let mut found = false
+  observation.events.each(fn(event) {
+    match event {
+      FuzzObservedEvent::Error(_) => found = true
+      _ => ()
+    }
+  })
+  found
+}
+
+///|
+fn fuzz_observation_to_encode_items(
+  observation : FuzzParseObservation,
+) -> Array[@telnet.EncodeItem]? {
+  if !observation.complete {
+    return None
+  }
+  let items : Array[@telnet.EncodeItem] = []
+  let mut encodable = true
+  observation.events.each(fn(event) {
+    match event {
+      FuzzObservedEvent::Data(data) =>
+        items.push(@telnet.EncodeItem::EscapedData(fuzz_span_from_bytes(data)))
+      FuzzObservedEvent::Command(command) =>
+        items.push(@telnet.EncodeItem::Command(command))
+      FuzzObservedEvent::Negotiation(event) =>
+        items.push(@telnet.EncodeItem::Negotiation(event))
+      FuzzObservedEvent::Subnegotiation(option, payload) =>
+        items.push(
+          @telnet.EncodeItem::Subnegotiation(@telnet.SubnegotiationEvent::{
+            option,
+            payload: fuzz_span_from_bytes(payload),
+          }),
+        )
+      FuzzObservedEvent::Error(_) => encodable = false
+    }
+  })
+  if encodable {
+    Some(items)
+  } else {
+    None
+  }
+}
+
+///|
+fn fuzz_encode_items_to_wire(
+  items : Array[@telnet.EncodeItem],
+  seed : Int,
+) -> Bytes raise {
+  let encoder = @telnet.Encoder::canonical()
+  let wire_parts : Array[Byte] = []
+  items.each(fn(item) raise {
+    let encoded = fuzz_encode_item_to_bytes(encoder, item, seed)
+    wire_parts.push_iter(encoded.to_array().iter())
+  })
+  Bytes::from_array(wire_parts)
+}
+
+///|
+fn fuzz_assert_parse_encode_stable(input : Bytes, seed : Int) -> Unit raise {
+  let first = fuzz_observe_whole(fuzz_roundtrip_parser_config(), input)
+  match fuzz_observation_to_encode_items(first) {
+    None => assert_true(!first.complete || fuzz_observation_has_error(first))
+    Some(items) => {
+      let wire = fuzz_encode_items_to_wire(items, seed)
+      let second = fuzz_observe_whole(fuzz_roundtrip_parser_config(), wire)
+      if !second.complete || second.events != first.events {
+        println(
+          "parse encode stability mismatch seed=" +
+          seed.to_string() +
+          " input_length=" +
+          input.length().to_string() +
+          " canonical_wire_length=" +
+          wire.length().to_string(),
+        )
+        abort("parse encode stability mismatch")
+      }
+    }
+  }
+}
+
+///|
+fn fuzz_assert_parse_encode_excluded(input : Bytes, seed : Int) -> Unit raise {
+  let observed = fuzz_observe_whole(fuzz_roundtrip_parser_config(), input)
+  match fuzz_observation_to_encode_items(observed) {
+    None =>
+      assert_true(!observed.complete || fuzz_observation_has_error(observed))
+    Some(_) => {
+      println(
+        "parse encode exclusion unexpectedly encodable seed=" +
+        seed.to_string() +
+        " input_length=" +
+        input.length().to_string(),
+      )
+      abort("parse encode exclusion unexpectedly encodable")
+    }
+  }
+}
+
+///|
+test "parse encode stability fuzz covers targeted valid streams" {
+  fuzz_assert_parse_encode_stable(fuzz_bytes_from_ints([]), 10100)
+  fuzz_assert_parse_encode_stable(
+    fuzz_bytes_from_ints([72, 101, 108, 108, 111]),
+    10101,
+  )
+  fuzz_assert_parse_encode_stable(
+    fuzz_bytes_from_ints([65, 255, 255, 66]),
+    10102,
+  )
+  fuzz_assert_parse_encode_stable(
+    fuzz_bytes_from_ints([255, 241, 255, 246]),
+    10103,
+  )
+  fuzz_assert_parse_encode_stable(
+    fuzz_bytes_from_ints([255, 251, 1, 255, 253, 31]),
+    10104,
+  )
+  fuzz_assert_parse_encode_stable(
+    fuzz_bytes_from_ints([255, 250, 31, 0, 255, 255, 240, 13, 0, 255, 240]),
+    10105,
+  )
+}
+
+///|
+test "parse encode stability fuzz documents excluded malformed tails" {
+  fuzz_assert_parse_encode_excluded(fuzz_bytes_from_ints([255]), 10200)
+  fuzz_assert_parse_encode_excluded(fuzz_bytes_from_ints([255, 251]), 10201)
+  fuzz_assert_parse_encode_excluded(fuzz_bytes_from_ints([255, 250]), 10202)
+  fuzz_assert_parse_encode_excluded(
+    fuzz_bytes_from_ints([255, 250, 31, 255]),
+    10203,
+  )
+  fuzz_assert_parse_encode_excluded(fuzz_bytes_from_ints([255, 240]), 10204)
+  fuzz_assert_parse_encode_excluded(fuzz_bytes_from_ints([255, 1]), 10205)
+}
+
+///|
+test "parse encode stability fuzz covers generated arbitrary streams" {
+  for iteration = 0; iteration < 32; iteration = iteration + 1 {
+    let no_iac_length = iteration * 7 % 49
+    fuzz_assert_parse_encode_stable(
+      fuzz_no_iac_bytes(10300 + iteration, no_iac_length),
+      10300 + iteration,
+    )
+    let dense_length = (iteration * 9 + 1) % 57
+    fuzz_assert_parse_encode_stable(
+      fuzz_telnet_biased_bytes(10400 + iteration, dense_length),
+      10400 + iteration,
+    )
+  }
+}

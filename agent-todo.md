@@ -14,22 +14,27 @@ Before and after code changes, follow `AGENTS.md`: run `moon info && moon fmt` a
 ## Active refinements
 
 - Failure output should include enough detail to reproduce a case: PRNG seed, iteration, generated length, byte array, parser config, whether the case was whole-buffer or chunked, encoded wire bytes when relevant, and expected/observed normalized events when practical.
-- Parse-then-encode work can build on the existing normalized event comparison and encode-parse round-trip helpers in `telnet_fuzz_test.mbt`.
 - Focused `IAC` stress work should cover trailing bare `IAC`, repeated `IAC` runs, subnegotiation payload escapes, and command boundaries.
 
+## Latest completed slice
+
+- Completed slice 6, parse-then-encode stability property, on 2026-05-24.
+- Added canonical parse/encode/parse idempotence checks for complete error-free observations; parser `Error` events and `finish.complete == false` are explicitly treated as non-encodable tails.
+- No parser or encoder bugs were discovered, so no reduced regression fixes were needed.
+- Reproduction seeds/details:
+  - Targeted valid streams: `10100` empty, `10101` text, `10102` escaped data `IAC IAC`, `10103` simple commands, `10104` negotiations, `10105` subnegotiation payload with escaped `IAC`.
+  - Explicitly excluded malformed tails: `10200` trailing `IAC`, `10201` incomplete `WILL`, `10202` incomplete `SB`, `10203` incomplete subnegotiation after `IAC`, `10204` unexpected `SE`, `10205` invalid command byte.
+  - Generated streams: no-`IAC` seeds `10300..10331`, lengths `iteration * 7 % 49`; dense TELNET-biased seeds `10400..10431`, lengths `(iteration * 9 + 1) % 57`.
+- Commands run:
+  - `git status --short && git log --oneline -5`
+  - `find '*fuzz*'`
+  - `moon info && moon fmt && moon test` before implementation: 850 passed
+  - `moon info && moon fmt && moon test` after implementation: 853 passed
+  - `git status --short && git diff --stat && git diff -- pkg.generated.mbti`
+  - `git status --short && git diff --stat && git diff -- agent-todo.md telnet_fuzz_test.mbt | sed -n '1,320p'`
+  - `moon info && moon fmt && moon test` final verification after TODO update: 853 passed
+
 ## Active work slices
-
-### 6. Parse-then-encode stability property
-
-- Parse arbitrary byte sequences into whatever structured representation is available.
-- Re-encode parseable/complete outputs and parse again.
-- Assert idempotence or a documented stable normal form.
-- Exclude malformed/incomplete tails only with explicit checks.
-
-Acceptance criteria:
-
-- Stable normal-form property exists for parseable streams.
-- Known non-idempotent cases are documented with rationale.
 
 ### 7. TELNET `IAC` escaping stress cases
 
