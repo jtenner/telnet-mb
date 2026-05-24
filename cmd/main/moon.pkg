@@ -1,0 +1,7 @@
+// import {
+//   "moonbit-telnet/telnet" @lib,
+// }
+
+options(
+  "is-main": true,
+)
