@@ -572,6 +572,527 @@ fn fuzz_random_chunks(seed : Int, length : Int) -> Array[Int] {
 }
 
 ///|
+struct FuzzKnownOptionCase {
+  byte : Int
+  known : @telnet.KnownOption
+} derive(Eq, Debug)
+
+///|
+fn fuzz_known_option_name(option : @telnet.KnownOption) -> String {
+  match option {
+    @telnet.KnownOption::Binary => "Binary"
+    @telnet.KnownOption::Echo => "Echo"
+    @telnet.KnownOption::Reconnection => "Reconnection"
+    @telnet.KnownOption::SuppressGoAhead => "SuppressGoAhead"
+    @telnet.KnownOption::ApproxMessageSizeNegotiation =>
+      "ApproxMessageSizeNegotiation"
+    @telnet.KnownOption::Status => "Status"
+    @telnet.KnownOption::TimingMark => "TimingMark"
+    @telnet.KnownOption::RemoteControlledTransAndEcho =>
+      "RemoteControlledTransAndEcho"
+    @telnet.KnownOption::OutputLineWidth => "OutputLineWidth"
+    @telnet.KnownOption::OutputPageSize => "OutputPageSize"
+    @telnet.KnownOption::OutputCarriageReturnDisposition =>
+      "OutputCarriageReturnDisposition"
+    @telnet.KnownOption::OutputHorizontalTabStops => "OutputHorizontalTabStops"
+    @telnet.KnownOption::OutputHorizontalTabDisposition =>
+      "OutputHorizontalTabDisposition"
+    @telnet.KnownOption::OutputFormfeedDisposition =>
+      "OutputFormfeedDisposition"
+    @telnet.KnownOption::OutputVerticalTabStops => "OutputVerticalTabStops"
+    @telnet.KnownOption::OutputVerticalTabDisposition =>
+      "OutputVerticalTabDisposition"
+    @telnet.KnownOption::OutputLinefeedDisposition =>
+      "OutputLinefeedDisposition"
+    @telnet.KnownOption::ExtendedAscii => "ExtendedAscii"
+    @telnet.KnownOption::Logout => "Logout"
+    @telnet.KnownOption::ByteMacro => "ByteMacro"
+    @telnet.KnownOption::DataEntryTerminal => "DataEntryTerminal"
+    @telnet.KnownOption::Supdup => "Supdup"
+    @telnet.KnownOption::SupdupOutput => "SupdupOutput"
+    @telnet.KnownOption::SendLocation => "SendLocation"
+    @telnet.KnownOption::TerminalType => "TerminalType"
+    @telnet.KnownOption::EndOfRecord => "EndOfRecord"
+    @telnet.KnownOption::TacacsUserIdentification => "TacacsUserIdentification"
+    @telnet.KnownOption::OutputMarking => "OutputMarking"
+    @telnet.KnownOption::TerminalLocationNumber => "TerminalLocationNumber"
+    @telnet.KnownOption::Telnet3270Regime => "Telnet3270Regime"
+    @telnet.KnownOption::X3Pad => "X3Pad"
+    @telnet.KnownOption::Naws => "Naws"
+    @telnet.KnownOption::TerminalSpeed => "TerminalSpeed"
+    @telnet.KnownOption::RemoteFlowControl => "RemoteFlowControl"
+    @telnet.KnownOption::Linemode => "Linemode"
+    @telnet.KnownOption::XDisplayLocation => "XDisplayLocation"
+    @telnet.KnownOption::Environment => "Environment"
+    @telnet.KnownOption::Authentication => "Authentication"
+    @telnet.KnownOption::Encryption => "Encryption"
+    @telnet.KnownOption::NewEnvironment => "NewEnvironment"
+    @telnet.KnownOption::Tn3270e => "Tn3270e"
+    @telnet.KnownOption::Xauth => "Xauth"
+    @telnet.KnownOption::Charset => "Charset"
+    @telnet.KnownOption::TelnetRemoteSerialPort => "TelnetRemoteSerialPort"
+    @telnet.KnownOption::ComPortControl => "ComPortControl"
+    @telnet.KnownOption::TelnetSuppressLocalEcho => "TelnetSuppressLocalEcho"
+    @telnet.KnownOption::TelnetStartTls => "TelnetStartTls"
+    @telnet.KnownOption::Kermit => "Kermit"
+    @telnet.KnownOption::SendUrl => "SendUrl"
+    @telnet.KnownOption::ForwardX => "ForwardX"
+    @telnet.KnownOption::ExtendedOptionsList => "ExtendedOptionsList"
+    @telnet.KnownOption::Unknown(code) =>
+      "Unknown(" + fuzz_option_code_summary(code) + ")"
+  }
+}
+
+///|
+fn fuzz_known_option_cases() -> Array[FuzzKnownOptionCase] {
+  [
+    FuzzKnownOptionCase::{ byte: 0, known: @telnet.KnownOption::Binary },
+    FuzzKnownOptionCase::{ byte: 1, known: @telnet.KnownOption::Echo },
+    FuzzKnownOptionCase::{ byte: 2, known: @telnet.KnownOption::Reconnection },
+    FuzzKnownOptionCase::{
+      byte: 3,
+      known: @telnet.KnownOption::SuppressGoAhead,
+    },
+    FuzzKnownOptionCase::{
+      byte: 4,
+      known: @telnet.KnownOption::ApproxMessageSizeNegotiation,
+    },
+    FuzzKnownOptionCase::{ byte: 5, known: @telnet.KnownOption::Status },
+    FuzzKnownOptionCase::{ byte: 6, known: @telnet.KnownOption::TimingMark },
+    FuzzKnownOptionCase::{
+      byte: 7,
+      known: @telnet.KnownOption::RemoteControlledTransAndEcho,
+    },
+    FuzzKnownOptionCase::{
+      byte: 8,
+      known: @telnet.KnownOption::OutputLineWidth,
+    },
+    FuzzKnownOptionCase::{ byte: 9, known: @telnet.KnownOption::OutputPageSize },
+    FuzzKnownOptionCase::{
+      byte: 10,
+      known: @telnet.KnownOption::OutputCarriageReturnDisposition,
+    },
+    FuzzKnownOptionCase::{
+      byte: 11,
+      known: @telnet.KnownOption::OutputHorizontalTabStops,
+    },
+    FuzzKnownOptionCase::{
+      byte: 12,
+      known: @telnet.KnownOption::OutputHorizontalTabDisposition,
+    },
+    FuzzKnownOptionCase::{
+      byte: 13,
+      known: @telnet.KnownOption::OutputFormfeedDisposition,
+    },
+    FuzzKnownOptionCase::{
+      byte: 14,
+      known: @telnet.KnownOption::OutputVerticalTabStops,
+    },
+    FuzzKnownOptionCase::{
+      byte: 15,
+      known: @telnet.KnownOption::OutputVerticalTabDisposition,
+    },
+    FuzzKnownOptionCase::{
+      byte: 16,
+      known: @telnet.KnownOption::OutputLinefeedDisposition,
+    },
+    FuzzKnownOptionCase::{ byte: 17, known: @telnet.KnownOption::ExtendedAscii },
+    FuzzKnownOptionCase::{ byte: 18, known: @telnet.KnownOption::Logout },
+    FuzzKnownOptionCase::{ byte: 19, known: @telnet.KnownOption::ByteMacro },
+    FuzzKnownOptionCase::{
+      byte: 20,
+      known: @telnet.KnownOption::DataEntryTerminal,
+    },
+    FuzzKnownOptionCase::{ byte: 21, known: @telnet.KnownOption::Supdup },
+    FuzzKnownOptionCase::{ byte: 22, known: @telnet.KnownOption::SupdupOutput },
+    FuzzKnownOptionCase::{ byte: 23, known: @telnet.KnownOption::SendLocation },
+    FuzzKnownOptionCase::{ byte: 24, known: @telnet.KnownOption::TerminalType },
+    FuzzKnownOptionCase::{ byte: 25, known: @telnet.KnownOption::EndOfRecord },
+    FuzzKnownOptionCase::{
+      byte: 26,
+      known: @telnet.KnownOption::TacacsUserIdentification,
+    },
+    FuzzKnownOptionCase::{ byte: 27, known: @telnet.KnownOption::OutputMarking },
+    FuzzKnownOptionCase::{
+      byte: 28,
+      known: @telnet.KnownOption::TerminalLocationNumber,
+    },
+    FuzzKnownOptionCase::{
+      byte: 29,
+      known: @telnet.KnownOption::Telnet3270Regime,
+    },
+    FuzzKnownOptionCase::{ byte: 30, known: @telnet.KnownOption::X3Pad },
+    FuzzKnownOptionCase::{ byte: 31, known: @telnet.KnownOption::Naws },
+    FuzzKnownOptionCase::{ byte: 32, known: @telnet.KnownOption::TerminalSpeed },
+    FuzzKnownOptionCase::{
+      byte: 33,
+      known: @telnet.KnownOption::RemoteFlowControl,
+    },
+    FuzzKnownOptionCase::{ byte: 34, known: @telnet.KnownOption::Linemode },
+    FuzzKnownOptionCase::{
+      byte: 35,
+      known: @telnet.KnownOption::XDisplayLocation,
+    },
+    FuzzKnownOptionCase::{ byte: 36, known: @telnet.KnownOption::Environment },
+    FuzzKnownOptionCase::{
+      byte: 37,
+      known: @telnet.KnownOption::Authentication,
+    },
+    FuzzKnownOptionCase::{ byte: 38, known: @telnet.KnownOption::Encryption },
+    FuzzKnownOptionCase::{
+      byte: 39,
+      known: @telnet.KnownOption::NewEnvironment,
+    },
+    FuzzKnownOptionCase::{ byte: 40, known: @telnet.KnownOption::Tn3270e },
+    FuzzKnownOptionCase::{ byte: 41, known: @telnet.KnownOption::Xauth },
+    FuzzKnownOptionCase::{ byte: 42, known: @telnet.KnownOption::Charset },
+    FuzzKnownOptionCase::{
+      byte: 43,
+      known: @telnet.KnownOption::TelnetRemoteSerialPort,
+    },
+    FuzzKnownOptionCase::{
+      byte: 44,
+      known: @telnet.KnownOption::ComPortControl,
+    },
+    FuzzKnownOptionCase::{
+      byte: 45,
+      known: @telnet.KnownOption::TelnetSuppressLocalEcho,
+    },
+    FuzzKnownOptionCase::{
+      byte: 46,
+      known: @telnet.KnownOption::TelnetStartTls,
+    },
+    FuzzKnownOptionCase::{ byte: 47, known: @telnet.KnownOption::Kermit },
+    FuzzKnownOptionCase::{ byte: 48, known: @telnet.KnownOption::SendUrl },
+    FuzzKnownOptionCase::{ byte: 49, known: @telnet.KnownOption::ForwardX },
+    FuzzKnownOptionCase::{
+      byte: 255,
+      known: @telnet.KnownOption::ExtendedOptionsList,
+    },
+  ]
+}
+
+///|
+fn fuzz_print_option_catalog_failure(
+  phase : String,
+  value : Int,
+  expected : @telnet.KnownOption,
+  observed : @telnet.KnownOption,
+) -> Unit {
+  println(
+    "option catalog fuzz phase=" +
+    phase +
+    " byte=" +
+    value.to_string() +
+    " expected=" +
+    fuzz_known_option_name(expected) +
+    " observed=" +
+    fuzz_known_option_name(observed),
+  )
+}
+
+///|
+fn fuzz_assert_option_catalog_case(case : FuzzKnownOptionCase) -> Unit {
+  let code = @telnet.OptionCode::new(byte(case.byte))
+  let from_code = @telnet.KnownOption::from_code(code)
+  if from_code != case.known {
+    fuzz_print_option_catalog_failure(
+      "from_code",
+      case.byte,
+      case.known,
+      from_code,
+    )
+    abort("option catalog from_code mismatch")
+  }
+  let to_code = case.known.to_code()
+  if to_code != code {
+    println(
+      "option catalog fuzz phase=to_code byte=" +
+      case.byte.to_string() +
+      " known=" +
+      fuzz_known_option_name(case.known) +
+      " observed_code=" +
+      fuzz_option_code_summary(to_code),
+    )
+    abort("option catalog to_code mismatch")
+  }
+  let roundtrip = @telnet.KnownOption::from_code(to_code)
+  if roundtrip != case.known {
+    fuzz_print_option_catalog_failure(
+      "named-roundtrip",
+      case.byte,
+      case.known,
+      roundtrip,
+    )
+    abort("option catalog named roundtrip mismatch")
+  }
+}
+
+///|
+test "option catalog fuzz covers all named known option mappings" {
+  let cases = fuzz_known_option_cases()
+  let seen = Array::make(256, false)
+  assert_true(cases.length() == 51)
+  cases.each(fn(case) raise {
+    assert_true(case.byte >= 0 && case.byte < 256)
+    assert_true(!seen[case.byte])
+    seen[case.byte] = true
+    fuzz_assert_option_catalog_case(case)
+  })
+  for value = 0; value < 256; value = value + 1 {
+    let code = @telnet.OptionCode::new(byte(value))
+    let known = @telnet.KnownOption::from_code(code)
+    if seen[value] {
+      assert_true(known.to_code() == code)
+    } else if known != @telnet.KnownOption::Unknown(code) {
+      fuzz_print_option_catalog_failure(
+        "unknown-preservation",
+        value,
+        @telnet.KnownOption::Unknown(code),
+        known,
+      )
+      abort("option catalog unknown preservation mismatch")
+    } else {
+      assert_true(known.to_code() == code)
+    }
+  }
+}
+
+///|
+fn fuzz_command_catalog_config(strict : Bool) -> @telnet.ParserConfig {
+  @telnet.ParserConfig::{
+    max_data_chunk_bytes: 64,
+    max_subnegotiation_bytes: 64,
+    cr_policy: @telnet.CrPolicy::Preserve,
+    data_coalescing: @telnet.DataCoalescing::CoalesceUntilCommand,
+    strict_commands: strict,
+  }
+}
+
+///|
+fn fuzz_negotiation_verb_from_command_byte(
+  value : Int,
+) -> @telnet.NegotiationVerb {
+  match value {
+    251 => @telnet.NegotiationVerb::Will
+    252 => @telnet.NegotiationVerb::Wont
+    253 => @telnet.NegotiationVerb::Do
+    _ => @telnet.NegotiationVerb::Dont
+  }
+}
+
+///|
+fn fuzz_expected_iac_slot_observation(value : Int) -> FuzzParseObservation {
+  if value == 255 {
+    FuzzParseObservation::{
+      events: [FuzzObservedEvent::Data(fuzz_bytes_from_ints([255]))],
+      complete: true,
+    }
+  } else if value == 240 {
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::UnexpectedSubnegotiationEnd,
+          offset: 1,
+          byte: Some(byte(value)),
+          option: None,
+        }),
+      ],
+      complete: true,
+    }
+  } else if value == 250 {
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::IncompleteSubnegotiation,
+          offset: 1,
+          byte: None,
+          option: None,
+        }),
+      ],
+      complete: false,
+    }
+  } else if value >= 251 && value <= 254 {
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::IncompleteNegotiation,
+          offset: 1,
+          byte: Some(byte(value)),
+          option: None,
+        }),
+      ],
+      complete: false,
+    }
+  } else {
+    match @telnet.Command::from_byte(byte(value)) {
+      Some(command) =>
+        FuzzParseObservation::{
+          events: [FuzzObservedEvent::Command(command)],
+          complete: true,
+        }
+      None =>
+        FuzzParseObservation::{
+          events: [
+            FuzzObservedEvent::Error(@telnet.TelnetError::{
+              kind: @telnet.TelnetErrorKind::InvalidCommandByte,
+              offset: 1,
+              byte: Some(byte(value)),
+              option: None,
+            }),
+          ],
+          complete: true,
+        }
+    }
+  }
+}
+
+///|
+fn fuzz_print_command_catalog_failure(
+  phase : String,
+  value : Int,
+  strict : Bool,
+  wire : Bytes,
+  expected : FuzzParseObservation,
+  observed : FuzzParseObservation,
+) -> Unit {
+  println(
+    "command catalog fuzz phase=" +
+    phase +
+    " byte=" +
+    value.to_string() +
+    " strict=" +
+    strict.to_string() +
+    " wire=" +
+    fuzz_bytes_literal(wire),
+  )
+  println("expected " + fuzz_observation_summary(expected))
+  println("observed " + fuzz_observation_summary(observed))
+}
+
+///|
+fn fuzz_assert_iac_slot_case(value : Int, strict : Bool) -> Unit raise {
+  let config = fuzz_command_catalog_config(strict)
+  let wire = fuzz_bytes_from_ints([255, value])
+  let expected = fuzz_expected_iac_slot_observation(value)
+  let observed = fuzz_observe_whole(config, wire)
+  if observed != expected {
+    fuzz_print_command_catalog_failure(
+      "whole-iac-slot", value, strict, wire, expected, observed,
+    )
+    abort("command catalog whole IAC slot mismatch")
+  }
+  let chunked = fuzz_observe_chunks(
+    config,
+    wire,
+    fuzz_one_byte_chunks(wire.length()),
+  )
+  if chunked != observed {
+    fuzz_print_command_catalog_failure(
+      "chunked-iac-slot", value, strict, wire, observed, chunked,
+    )
+    abort("command catalog chunked IAC slot mismatch")
+  }
+}
+
+///|
+test "command catalog fuzz covers every mapping helper byte" {
+  for value = 0; value < 256; value = value + 1 {
+    match @telnet.Command::from_byte(byte(value)) {
+      Some(command) => {
+        if value < 240 || command.to_byte() != byte(value) {
+          println(
+            "command catalog fuzz phase=from_byte byte=" +
+            value.to_string() +
+            " command=" +
+            fuzz_command_name(command) +
+            " to_byte=" +
+            command.to_byte().to_int().to_string(),
+          )
+          abort("command catalog from_byte/to_byte mismatch")
+        }
+        match @telnet.NegotiationVerb::from_command(command) {
+          Some(verb) =>
+            if value < 251 || value > 254 || verb.to_command() != command {
+              println(
+                "command catalog fuzz phase=negotiation-verb byte=" +
+                value.to_string() +
+                " command=" +
+                fuzz_command_name(command) +
+                " verb=" +
+                fuzz_negotiation_verb_name(verb),
+              )
+              abort("command catalog negotiation verb mismatch")
+            }
+          None => assert_true(value < 251 || value > 254)
+        }
+      }
+      None => assert_true(value < 240)
+    }
+  }
+}
+
+///|
+test "command catalog fuzz covers parser IAC command slots" {
+  for value = 0; value < 256; value = value + 1 {
+    fuzz_assert_iac_slot_case(value, true)
+    fuzz_assert_iac_slot_case(value, false)
+  }
+}
+
+///|
+test "command catalog fuzz covers negotiation option bytes" {
+  let config = fuzz_command_catalog_config(true)
+  for verb_byte = 251; verb_byte <= 254; verb_byte = verb_byte + 1 {
+    let verb = fuzz_negotiation_verb_from_command_byte(verb_byte)
+    for option = 0; option < 256; option = option + 1 {
+      let wire = fuzz_bytes_from_ints([255, verb_byte, option])
+      let expected = FuzzParseObservation::{
+        events: [
+          FuzzObservedEvent::Negotiation(@telnet.NegotiationEvent::{
+            verb,
+            option: @telnet.OptionCode::new(byte(option)),
+          }),
+        ],
+        complete: true,
+      }
+      let observed = fuzz_observe_whole(config, wire)
+      if observed != expected {
+        fuzz_print_command_catalog_failure(
+          "negotiation-option", option, true, wire, expected, observed,
+        )
+        println("verb_byte=" + verb_byte.to_string())
+        abort("command catalog negotiation option mismatch")
+      }
+    }
+  }
+}
+
+///|
+test "command catalog fuzz covers subnegotiation option bytes" {
+  let config = fuzz_command_catalog_config(true)
+  for option = 0; option < 256; option = option + 1 {
+    let wire = fuzz_bytes_from_ints([255, 250, option, 255, 240])
+    let expected = FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Subnegotiation(
+          @telnet.OptionCode::new(byte(option)),
+          Bytes::new(0),
+        ),
+      ],
+      complete: true,
+    }
+    let observed = fuzz_observe_whole(config, wire)
+    if observed != expected {
+      fuzz_print_command_catalog_failure(
+        "subnegotiation-option", option, true, wire, expected, observed,
+      )
+      abort("command catalog subnegotiation option mismatch")
+    }
+  }
+}
+
+///|
 fn fuzz_assert_streaming_equivalent(
   config : @telnet.ParserConfig,
   input : Bytes,

@@ -455,11 +455,11 @@ test "TDD option string codecs reject invalid UTF-8 byte sequences" {
 
 ///|
 test "TDD IANA mapping samples document unsupported scope as known or unknown" {
-  let known = [0, 1, 3, 24, 31, 34, 36, 37, 38, 39, 42, 46, 255]
+  let known = [0, 1, 3, 24, 31, 34, 36, 37, 38, 39, 42, 46, 47, 255]
   known.each(fn(n) raise {
     assert_true(@telnet.KnownOption::from_code(opt(n)).to_code() == opt(n))
   })
-  let unsupported_private = [47, 70, 93, 200]
+  let unsupported_private = [50, 70, 93, 200]
   unsupported_private.each(fn(n) raise {
     assert_true(
       @telnet.KnownOption::from_code(opt(n)) ==

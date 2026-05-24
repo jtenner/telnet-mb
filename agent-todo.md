@@ -17,40 +17,29 @@ Before and after code changes, follow `AGENTS.md`: run `moon info && moon fmt` a
 
 ## Latest completed slice
 
-- Completed slice 9, negotiation command sequence fuzzer, on 2026-05-24.
-- Added deterministic generated negotiator coverage for incoming `WILL`, `WONT`, `DO`, and `DONT` command sequences over known, unknown, and arbitrary option bytes.
-- Added interleaved local `request()` and peer `receive()` fuzz coverage to exercise duplicate and opposite queued request paths.
-- Asserted negotiator invariants: no panic, at most two actions per transition, action option scope does not drift, `apply`/`state_for` reflects the latest transition, and generated state storage keeps one state per option.
-- Added failure diagnostics with case name, PRNG seed, iteration, sequence length, step, operation, encoded negotiation wire bytes, transition details, and observed states where relevant.
-- No negotiator bugs were discovered, so no reduced regression fixes or wiki ambiguity notes were needed.
-- Remaining follow-ups: continue with slice 10 (unknown option and command catalog coverage) and the still-active general failure-output refinement for older fuzz helpers.
+- Completed slice 10, unknown option and command catalog coverage, on 2026-05-24.
+- Added deterministic exhaustive fuzz-style catalog tests for every option byte `0..255`, every `Command::from_byte` slot, strict/lenient `IAC <byte>` parser slots, all negotiation verb/option byte pairs, and all subnegotiation option bytes.
+- Added failure diagnostics with phase, byte value, strictness, wire bytes, and expected/observed normalized parse events for parser catalog mismatches.
+- Fuzz coverage exposed incomplete known-option mappings: named constructors for option codes `7..23`, `26..30`, `41`, `43`, and `47..49` did not round-trip through `KnownOption::from_code`/`to_code`; fixed the mapping helpers.
+- Fuzz coverage also caught the misleading public name for option code `47`; renamed `KnownOption::KerberosV5` to `KnownOption::Kermit` and updated `pkg.generated.mbti` with `moon info`.
+- Remaining follow-ups: continue with slice 11 (CR/LF/NUL text handling fuzz cases) and the still-active general failure-output refinement for older fuzz helpers.
 - Reproduction seeds/details:
-  - Incoming generated sequences: seeds `13000..13031`; sequence lengths `1 + iteration * 5 % 41`.
-  - Interleaved generated request/receive sequences: seeds `13100..13123`; sequence lengths `2 + iteration * 7 % 37`.
+  - No PRNG seeds are needed for this slice; coverage is exhaustive over byte ranges.
+  - Option catalog: named cases for codes `0..49` plus `255`, and unknown-preservation checks for all other bytes in `0..255`.
+  - Command catalog: helper checks for bytes `0..255`; parser checks for `[255, byte]` in both strict modes; negotiation wires `[255, verb, option]` for verbs `251..254` and options `0..255`; subnegotiation wires `[255, 250, option, 255, 240]` for options `0..255`.
 - Commands run:
   - `git status --short && git log --oneline -5`
   - `find '*fuzz*'`
-  - `moon info && moon fmt && moon test` before implementation: 858 passed
-  - `moon info && moon fmt && moon test` during implementation: compile failed on duplicate helper name and missing string-format helpers; fixed in the same task
-  - `moon info && moon fmt && moon test` after implementation: 860 passed
+  - `moon info && moon fmt && moon test` before implementation: 860 passed
+  - `moon info && moon fmt && moon test` during implementation: 863 passed / 2 failed after new catalog tests exposed missing option mappings and an incorrect lenient-parser expectation in the new fuzz helper; fixed in the same task
+  - `moon info && moon fmt && moon test` after implementation: 865 passed
   - `git status --short && git diff --stat`
   - `git diff -- pkg.generated.mbti`
-  - `git diff -- telnet_fuzz_test.mbt | sed -n '1,260p'`
-  - `git diff -- agent-todo.md`
-  - `moon info && moon fmt && moon test` final verification after TODO updates: 860 passed (run three times after implementation; all passed)
+  - `git diff -- api.mbt telnet.mbt telnet_fuzz_test.mbt telnet_policy_blind_spots_tdd_test.mbt | sed -n '1,260p'`
+  - `moon info && moon fmt && moon test` final verification after TODO updates: 865 passed (run twice after implementation; both passed)
+  - `git diff --check && git status --short`
 
 ## Active work slices
-
-### 10. Unknown option and command catalog coverage
-
-- Iterate over all 0..255 option codes and all relevant command bytes.
-- Ensure unknown/registered option mapping is stable and parser behavior is safe.
-- Add generated tests for IANA option catalog coverage if the repo already has option mapping helpers.
-
-Acceptance criteria:
-
-- Exhaustive byte-level coverage for option/command mapping helpers.
-- Public behavior for unknown values is documented by tests.
 
 ### 11. CR/LF/NUL text handling fuzz cases
 

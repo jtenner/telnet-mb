@@ -106,7 +106,7 @@ pub(all) enum KnownOption {
   ComPortControl
   TelnetSuppressLocalEcho
   TelnetStartTls
-  KerberosV5
+  Kermit
   SendUrl
   ForwardX
   ExtendedOptionsList
