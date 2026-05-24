@@ -47,8 +47,25 @@ To promote a failure into a regression test:
 4. Fix the bug or document the remaining limitation, then keep the reduced test
    in the normal fast `moon test` suite.
 
-Longer exploratory fuzzing should stay behind a separate command or explicit
-configuration so the default test suite remains deterministic and quick.
+Longer exploratory fuzzing lives in the separate `cmd/fuzz` package so the
+default test suite remains deterministic and quick. Run the default extended
+local pass with:
+
+```sh
+moon run cmd/fuzz
+```
+
+For a reproducible custom run, pass positional arguments after `--`:
+
+```sh
+moon run cmd/fuzz -- <seed> <iterations> <max-length> <target>
+```
+
+`<target>` is one of `all`, `smoke`, `streaming`, or `stability`. The command
+prints the selected seed, iteration count, maximum generated wire length, target,
+and a final checksum. On failure it prints `target=... seed=... iteration=...
+max_length=... wire=bytes([...])` so the wire can be copied into a named
+regression test.
 
 ## Minimum completion criteria for each option
 

@@ -1,0 +1,25 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-telnet/telnet/cmd/fuzz"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+type FuzzObservedEvent derive(Eq, @debug.Debug)
+
+type FuzzParseObservation derive(Eq, @debug.Debug)
+
+type FuzzRng derive(Eq, @debug.Debug)
+
+type FuzzSettings derive(Eq, @debug.Debug)
+
+type FuzzTarget derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits

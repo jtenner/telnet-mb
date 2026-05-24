@@ -13,38 +13,30 @@ Before and after code changes, follow `AGENTS.md`: run `moon info && moon fmt` a
 
 ## Latest completed slice
 
-- Completed slice 13, failure minimization workflow, on 2026-05-24.
-- Added `docs/wiki/06-testing-compliance.md` reproduction guidance for copying printed seed/wire details into named regression tests.
-- Added a regression-ready byte-literal helper check so failures can print `wire=bytes([...])` snippets.
-- Improved streaming-equivalence, encoder/parser roundtrip, and parse/encode-stability failure output with seed, wire bytes, parser config, chunk sizes or chunk seed where relevant, and expected/observed normalized events.
+- Completed slice 14, separate long-running fuzz command/package, on 2026-05-24.
+- Added `cmd/fuzz` as a runnable deterministic fuzzer configurable with positional arguments: seed, iterations, max length, and target (`all`, `smoke`, `streaming`, or `stability`).
+- The command exercises parser smoke invariants across representative parser configs, streaming equivalence, and parse/encode stability without changing the fast default `moon test` suite.
+- Added `docs/wiki/06-testing-compliance.md` invocation and failure-reproduction notes for `moon run cmd/fuzz`.
 - No production parser bug was exposed in this slice.
-- Remaining follow-ups: continue with slice 14 (separate long-running fuzz command/package). Slice 19 should still add comprehensive fuzz documentation for properties, fast/long commands, and seed-corpus maintenance; the failure-reproduction subsection is now started in `06-testing-compliance.md`.
+- Remaining follow-ups: continue with slice 15 (CI-friendly fuzz mode), slice 16 (coverage-guided fuzzing research), slice 17 (performance/allocation guardrails), slice 18 (differential reference checks), slice 19 (broader fuzz documentation), slice 20 (regression backlog cleanup), and slice 21 (helper deduplication research).
 - Reproduction seeds/details:
   - No new fuzz failure seed was discovered.
-  - New helper coverage uses `fuzz_bytes_literal(fuzz_bytes_from_ints([0, 13, 255]))` as a deterministic formatting regression.
-  - Improved failure lines use `fuzz_reproduction_line(seed, input)` and report canonical wire bytes for parse/encode stability mismatches.
+  - Default command verification used `seed=424242 iterations=1024 max_length=128 target=all` and reported checksum `514624`.
+  - Argument parsing/reproduction verification used `seed=7 iterations=8 max_length=16 target=streaming` with checksum `25`, and `seed=11 iterations=8 max_length=16 target=stability` with checksum `48`.
+  - Failure lines from the command include `target=... seed=... iteration=... max_length=... wire=bytes([...])` for copying into named regression tests.
 - Commands run:
   - `git status --short && echo '--- recent commits ---' && git log --oneline -8`
-  - `moon info && moon fmt && moon test` before implementation: 870 passed
-  - `moon info && moon fmt && moon test` after implementation before warning cleanup: 871 passed with one unused-error-type warning
-  - `moon info && moon fmt && moon test` after warning cleanup: 871 passed
-  - `git status --short && git diff -- pkg.generated.mbti && git diff --stat`
-  - `git diff --check`
-  - `moon info && moon fmt && moon test && git diff --check && git status --short` final verification: 871 passed; working tree contained only `agent-todo.md`, `docs/wiki/06-testing-compliance.md`, and `telnet_fuzz_test.mbt`
+  - `moon run cmd/fuzz` during implementation: first failed on `moon.pkg` import separator syntax, then failed on command-package `byte(...)`/custom `to_string()` usage; both issues were fixed.
+  - `moon run cmd/fuzz` after fixes: passed with checksum `514624`.
+  - `moon run cmd/fuzz -- 7 8 16 streaming` during implementation exposed that `@env.args()` includes argv0; argument offset was fixed.
+  - `moon run cmd/fuzz -- 7 8 16 streaming`: passed with checksum `25`.
+  - `moon info && moon fmt`
+  - `git status --short && git diff --stat && git diff -- cmd/fuzz/main.mbt | head -120 && find cmd/fuzz -maxdepth 1 -type f -print -exec ls -l {} \\;`
+  - `moon test`: 871 passed.
+  - `moon run cmd/fuzz && moon run cmd/fuzz -- 7 8 16 streaming && moon run cmd/fuzz -- 11 8 16 stability && git diff --check`: all fuzz commands passed; `git diff --check` passed.
+  - `moon info && moon fmt && moon test && moon run cmd/fuzz -- 7 8 16 streaming && git diff --check && git status --short`: 871 tests passed; streaming command checksum `25`; working tree contained this slice's docs, todo, and `cmd/fuzz` changes.
 
 ## Active work slices
-
-### 14. Separate long-running fuzz command/package
-
-- Add `cmd/fuzz/` or equivalent only if MoonBit package layout supports it cleanly.
-- Provide a long-running deterministic fuzz loop configurable by environment variables or arguments: seed, iterations, max length, target/property.
-- Keep default test fuzzing fast; long fuzzing should run via a separate command.
-- If command-line argument handling is awkward, document the chosen invocation clearly.
-
-Acceptance criteria:
-
-- A developer can run an extended fuzz session locally without changing tests.
-- `moon run cmd/fuzz` or documented equivalent works.
 
 ### 15. CI-friendly fuzz mode
 
@@ -117,6 +109,17 @@ Acceptance criteria:
 
 - No unexplained TODOs or skipped fuzz tests remain.
 - `moon info && moon fmt && moon test` passes.
+
+### 21. Shared fuzzer helper research
+
+- Investigate whether deterministic RNG, TELNET-biased input generation, observation normalization, and failure formatting can be shared between `telnet_fuzz_test.mbt` and `cmd/fuzz` without exposing test-only API from the public package.
+- If MoonBit package boundaries make sharing awkward, document the duplication and keep command/test helpers intentionally independent.
+- Preserve fast default tests and keep `cmd/fuzz` runnable.
+
+Acceptance criteria:
+
+- Helper drift risk is reduced or explicitly documented.
+- No public TELNET API is added solely for fuzz internals.
 
 ## Suggested recurring-agent loop
 
