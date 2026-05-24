@@ -75,6 +75,52 @@ max_length=... wire=bytes([...])` so the wire can be copied into a named
 regression test. The GitHub Actions workflow in `.github/workflows/ci.yml` runs
 `moon info`, `moon fmt --check`, `moon test`, and the CI fuzz profile.
 
+### Experimental native coverage-guided fuzzing
+
+Feasibility decision: process-level coverage-guided fuzzing is practical for the
+native target without changing the public TELNET API. The experimental
+`cmd/fuzz-native` package reads one concrete TELNET wire input from stdin,
+reuses the parser smoke, one-byte streaming-equivalence, and parse/encode
+stability properties, and aborts with a `wire=bytes([...])` reproduction line on
+failure. It is not part of default `moon test` or CI; use it only when a native
+fuzzer is installed.
+
+The current MoonBit CLI exposes enough native-build detail for an external
+instrumenting C compiler workflow: `moon run --target native --build-only -v
+cmd/fuzz-native` prints the generated C response file under `_build/native/`.
+`tools/build-fuzz-native.sh` wraps that build and recompiles the generated C
+entry point into `_build/fuzz-native/telnet-fuzz-native` with `CC` (or
+`AFL_CC`), preserving the MoonBit runtime and TELNET native stubs. The script is
+experimental because it depends on generated native artifact paths, but those
+paths are isolated to optional fuzzing and are not needed for normal tests.
+
+Example local AFL++ flow, using AFL++'s compiler wrapper and stdin fuzzing mode
+(the AFL++ manual documents `afl-fuzz`, instrumentation, and `@@`/stdin input
+styles at <https://aflplus.plus/docs/fuzzing_in_depth/>):
+
+```sh
+CC=afl-clang-fast tools/build-fuzz-native.sh
+afl-fuzz -i tools/fuzz-corpus/seeds -o _build/fuzz-findings -- \
+  _build/fuzz-native/telnet-fuzz-native
+```
+
+A quick non-instrumented harness smoke check is also useful before launching a
+long run:
+
+```sh
+tools/build-fuzz-native.sh
+printf '\377\377' | _build/fuzz-native/telnet-fuzz-native
+```
+
+libFuzzer is not the primary path for this slice: LLVM's libFuzzer interface is
+centered on an in-process `LLVMFuzzerTestOneInput` entry point
+(<https://llvm.org/docs/LibFuzzer.html>), while the current MoonBit harness is a
+normal process with MoonBit runtime initialization and stdin input. honggfuzz can
+drive process-style fuzz targets (<https://github.com/google/honggfuzz>), but a
+file-path input mode or wrapper should be validated before documenting a stable
+command. Keep any long coverage-guided campaign outside the repository; promote
+failures into small named regression tests using the reproduction workflow above.
+
 ## Minimum completion criteria for each option
 
 - Source RFC linked in `04-options-catalog.md`.

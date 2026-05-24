@@ -1,0 +1,10 @@
+import {
+  "moonbit-telnet/telnet" @telnet,
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+}
+
+options(
+  "is-main": true,
+  "native-stub": [ "fuzz_stdin.c" ],
+)

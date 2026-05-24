@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-telnet/telnet/cmd/fuzz-native"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+type NativeFuzzSettings derive(Eq, @debug.Debug)
+
+type NativeObservedEvent derive(Eq, @debug.Debug)
+
+type NativeParseObservation derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits
