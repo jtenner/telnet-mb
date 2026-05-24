@@ -100,6 +100,7 @@ The public placeholder APIs are now exercised by two direct behavioral suites:
 - `telnet_behavior_tdd_test.mbt` covers baseline parser, encoder, negotiator, mapping-helper, and option-codec behavior.
 - `telnet_expanded_behavior_tdd_test.mbt` covers remaining blind spots: exhaustive representative parser split points, CR policy chunk boundaries, coalescing policies, strict/lenient invalid IAC recovery, malformed subnegotiation recovery, RFC 1143 queued-state negotiation, encoder atomicity/capacity formulas, raw-data bypass, malformed option codecs, and broader mapping-helper round trips.
 - `telnet_missing_behavior_tdd_test.mbt` covers the last pre-implementation test families: parser checkpoint modes, `feed_span`, finish idempotence, absolute offsets, `bytes_consumed`, parser capacity boundaries, DM/Synch, encoder method equivalence and error metadata, negotiator non-mutation/option independence/full-state metadata, option encode/decode roundtrips, string edge cases, START_TLS transcript policy, and future BINARY/session behavior fixtures.
+- `telnet_policy_blind_spots_tdd_test.mbt` locks down remaining policy/API choices: low-level session composition, explicit policy decisions, application-facing decoded option derivation, BINARY/NVT CR split, outgoing NVT canonicalization boundary, error metadata context, invalid `ByteSpan` and `ParserConfig` handling, parser-vs-codec responsibility, unsupported authentication/encryption scope, deeper NEW-ENVIRON/CHARSET/LINEMODE/NAWS/TTYPE behavior, negotiation storms, output queue planning, zero-copy span expectations, UTF-8 rejection, IANA mapping samples, and local-request transition shape.
 
 ## Session/API TODO
 
@@ -114,4 +115,4 @@ No public `Session` type is added yet. Before adding one, the implementation pla
 
 ## Placeholder policy
 
-All placeholder bodies must be replaced before release. Until then, `moon check` warns about unfinished code and `moon test` is expected to fail because `telnet_behavior_tdd_test.mbt`, `telnet_expanded_behavior_tdd_test.mbt`, and `telnet_missing_behavior_tdd_test.mbt` call these APIs directly. This is intentional TDD pressure: the API is visible in the generated interface, and the behavioral tests describe the production work still required.
+All placeholder bodies must be replaced before release. Until then, `moon check` warns about unfinished code and `moon test` is expected to fail because `telnet_behavior_tdd_test.mbt`, `telnet_expanded_behavior_tdd_test.mbt`, `telnet_missing_behavior_tdd_test.mbt`, and `telnet_policy_blind_spots_tdd_test.mbt` call these APIs directly. This is intentional TDD pressure: the API is visible in the generated interface, and the behavioral tests describe the production work still required.

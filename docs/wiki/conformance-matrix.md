@@ -28,7 +28,11 @@ This matrix maps current source-of-truth requirements to fixture and behavioral 
 | Encoder method equivalence and error metadata | RFC 854 + project API policy | `telnet_missing_behavior_tdd_test.mbt` | Failing behavioral TDD |
 | Negotiator mutation boundaries and option independence | RFC 1143 + project API policy | `telnet_missing_behavior_tdd_test.mbt` | Failing behavioral TDD |
 | Option codec roundtrips and string edge cases | RFC 1091/RFC 1073/RFC 1572/RFC 2066/RFC 1184/RFC 2946 | `telnet_missing_behavior_tdd_test.mbt` | Failing behavioral TDD |
-| Future Session/BINARY/START_TLS transcript policy | RFC 856/RFC 2946 + project session policy | `telnet_missing_behavior_tdd_test.mbt`, `docs/wiki/api-contract.md` | Failing behavioral TDD + documented TODO |
+| Future Session/BINARY/START_TLS transcript policy | RFC 856/RFC 2946 + project session policy | `telnet_missing_behavior_tdd_test.mbt`, `telnet_policy_blind_spots_tdd_test.mbt`, `docs/wiki/api-contract.md` | Failing behavioral TDD + documented TODO |
+| Invalid bounds/config hardening | Project API/security policy | `telnet_policy_blind_spots_tdd_test.mbt` | Failing behavioral TDD |
+| Parser-vs-codec responsibility boundaries | Project architecture policy | `telnet_policy_blind_spots_tdd_test.mbt` | Failing behavioral TDD |
+| Unsupported AUTH/ENCRYPT and private option scope | RFC option docs + project scope policy | `telnet_policy_blind_spots_tdd_test.mbt` | Failing behavioral TDD |
+| Output queue planning and zero-copy expectations | Project performance policy | `telnet_policy_blind_spots_tdd_test.mbt` | Failing behavioral TDD |
 
 ## Remaining status labels
 

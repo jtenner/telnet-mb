@@ -611,19 +611,14 @@ test "TDD option codec string and byte edge cases are explicit" {
 }
 
 ///|
-test "TDD START_TLS transcript rejects repeat downgrade and cleartext after follows" {
+test "TDD parser keeps START_TLS transcript policy out of raw parsing" {
   let parser = @telnet.Parser::new(missing_default_config())
   let first = parser.feed(bytes([255, 250, 46, 1, 255, 240]))
   assert_true(first.events == [sb(46, [1])])
   let repeat = first.parser.feed(bytes([255, 250, 46, 1, 255, 240]))
-  assert_true(
-    repeat.events == [err(@telnet.TelnetErrorKind::PolicyRejected, 11, Some(1))],
-  )
+  assert_true(repeat.events == [sb(46, [1])])
   let cleartext = repeat.parser.feed(bytes([65]))
-  assert_true(
-    cleartext.events ==
-    [err(@telnet.TelnetErrorKind::PolicyRejected, 12, Some(65))],
-  )
+  assert_true(cleartext.events == [data([65])])
 }
 
 ///|
