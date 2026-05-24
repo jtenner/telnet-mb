@@ -13,40 +13,29 @@ Before and after code changes, follow `AGENTS.md`: run `moon info && moon fmt` a
 
 ## Latest completed slice
 
-- Completed slice 17, performance and allocation guardrails, on 2026-05-24.
-- Added deterministic parser guardrail fuzz tests for large bounded no-IAC data, escaped-IAC runs, long negotiation streams, and oversized subnegotiation discard/resume behavior.
-- The guardrails assert full input consumption, exact checkpoint progress, zero retained parser buffers after complete frames, linear event counts, bounded data chunking, and single-error discard behavior for a 512-byte oversized subnegotiation followed by 64 negotiations.
-- Verified `cmd/bench/` already keeps related worst-case patterns performance-visible (`parser_plain_*`, dense/sparse escaped IAC, negotiation-heavy, subnegotiation-heavy, malformed-error-heavy, and e2e shell/output cases), so no benchmark change was needed for this slice.
+- Completed slice 18, differential checks against a simple reference model, on 2026-05-24.
+- Added a test-only, intentionally dumb TELNET core reference scanner for data, escaped `IAC`, simple commands, negotiation triplets, subnegotiation boundaries, and a few basic malformed boundaries.
+- Added deterministic differential tests for hand-picked edge seeds and 48 generated complete core streams under a Preserve-CR, generous-cap parser config.
+- Documented reference limitations in code: it does not model capacity/discard policy or NVT CR rules.
 - No production parser bug was exposed in this slice.
-- Remaining follow-ups: continue with slice 18 (differential reference checks), slice 19 (broader fuzz documentation), slice 20 (regression backlog cleanup), slice 21 (helper deduplication research), and slice 22 (native coverage-guided fuzzer validation/persistent or file-input modes).
+- Remaining follow-ups: continue with slice 19 (broader fuzz documentation), slice 20 (regression backlog cleanup), slice 21 (helper deduplication research), and slice 22 (native coverage-guided fuzzer validation/persistent or file-input modes).
 - Reproduction seeds/details:
   - No new fuzz failure seed was discovered.
-  - Large no-IAC guardrail uses `fuzz_no_iac_bytes(16000, 2048)` with `max_data_chunk_bytes=64` and expects 32 data events.
-  - Oversized subnegotiation guardrail uses `fuzz_no_iac_bytes(16017, 512)` inside `IAC SB NAWS ... IAC SE`, followed by 64 generated WILL/WONT/DO/DONT negotiations; it expects one `SubnegotiationTooLarge` error and 64 negotiation events.
-  - Escaped-IAC guardrail uses 512 `IAC` bytes, parsed as 256 escaped data bytes with 256 events.
-  - Long negotiation guardrail uses 512 complete negotiation triplets and expects exactly 512 negotiation events.
+  - Hand-picked differential seeds use IDs `17000` through `17011` for empty, data, escaped-IAC, command, negotiation, subnegotiation, and malformed-boundary cases.
+  - Generated complete core streams use seeds `18000 + iteration * 173` for iterations `0..47`, with `1 + iteration % 18` generation steps.
 - Commands run:
-  - `git status --short && git log --oneline -5`
-  - `git status --short && printf '\n--- stat ---\n' && git show --stat --oneline HEAD`
-  - `git diff -- agent-todo.md telnet_fuzz_test.mbt | sed -n '1,260p'`
-  - `moon test`: 874 tests passed.
-  - `moon info && moon fmt && moon test`: no public API diff intended; 874 tests passed (run before and after the todo update).
+  - `git status --short && printf '\n--- recent commits ---\n' && git log --oneline -8`
+  - `moon test`: initially failed on invalid `_` loop variable syntax in new generator; fixed before continuing.
+  - `moon test`: 876 tests passed.
+  - `git diff -- telnet_fuzz_test.mbt agent-todo.md | sed -n '1,260p'`
+  - `moon info && moon fmt`: no public API diff intended.
+  - `moon test`: 876 tests passed.
+  - `moon info && moon fmt && moon test`: final verification passed with 876 tests.
   - `git status --short && printf '\n--- mbti diff ---\n' && git diff -- pkg.generated.mbti cmd/fuzz/pkg.generated.mbti cmd/fuzz-native/pkg.generated.mbti`
-  - `git diff --check` / `git status --short && git diff --check && git diff --stat` (initially flagged generated `.mbti` blank lines at EOF after each `moon info`; normalized generated files back to no diff).
-  - `python3 - <<'PY' ... PY && git diff --check`: whitespace check passed after normalization.
+  - `git diff --check`: initially flagged generated `.mbti` blank lines at EOF after each `moon info`.
+  - `python3 - <<'PY' ... PY && git diff --check && git status --short`: normalized generated `.mbti` files back to no diff; whitespace check passed.
 
 ## Active work slices
-
-### 18. Differential checks against a simple reference model
-
-- Build a tiny test-only reference scanner for a small subset of TELNET: data bytes, escaped `IAC`, simple commands, and subnegotiation boundaries.
-- Compare production parser results against the reference model for that subset.
-- Keep reference intentionally dumb and independent from production implementation.
-
-Acceptance criteria:
-
-- Differential property catches parser drift for core framing.
-- Reference model limitations are documented.
 
 ### 19. Fuzz documentation
 

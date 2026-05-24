@@ -1312,6 +1312,474 @@ test "parser streaming fuzz covers generated fast paths and dense streams" {
 }
 
 ///|
+enum FuzzCoreReferenceMode {
+  Normal
+  AfterIac
+  AfterNegotiationVerb(@telnet.NegotiationVerb, Byte)
+  AfterSubnegotiationStart
+  InSubnegotiation(@telnet.OptionCode)
+  InSubnegotiationAfterIac(@telnet.OptionCode)
+}
+
+///|
+fn fuzz_core_reference_config() -> @telnet.ParserConfig {
+  @telnet.ParserConfig::{
+    max_data_chunk_bytes: 512,
+    max_subnegotiation_bytes: 512,
+    cr_policy: @telnet.CrPolicy::Preserve,
+    data_coalescing: @telnet.DataCoalescing::CoalesceUntilCommand,
+    strict_commands: true,
+  }
+}
+
+///|
+fn fuzz_reference_command(byte : Byte) -> @telnet.Command? {
+  match byte.to_int() {
+    240 => Some(@telnet.Command::SE)
+    241 => Some(@telnet.Command::NOP)
+    242 => Some(@telnet.Command::DM)
+    243 => Some(@telnet.Command::BRK)
+    244 => Some(@telnet.Command::IP)
+    245 => Some(@telnet.Command::AO)
+    246 => Some(@telnet.Command::AYT)
+    247 => Some(@telnet.Command::EC)
+    248 => Some(@telnet.Command::EL)
+    249 => Some(@telnet.Command::GA)
+    250 => Some(@telnet.Command::SB)
+    251 => Some(@telnet.Command::WILL)
+    252 => Some(@telnet.Command::WONT)
+    253 => Some(@telnet.Command::DO)
+    254 => Some(@telnet.Command::DONT)
+    255 => Some(@telnet.Command::IAC)
+    _ => None
+  }
+}
+
+///|
+fn fuzz_reference_negotiation_verb(
+  byte : Byte,
+) -> (@telnet.NegotiationVerb, Byte)? {
+  match byte.to_int() {
+    251 => Some((@telnet.NegotiationVerb::Will, byte))
+    252 => Some((@telnet.NegotiationVerb::Wont, byte))
+    253 => Some((@telnet.NegotiationVerb::Do, byte))
+    254 => Some((@telnet.NegotiationVerb::Dont, byte))
+    _ => None
+  }
+}
+
+///|
+fn fuzz_reference_error(
+  kind : @telnet.TelnetErrorKind,
+  offset : Int,
+  byte : Byte?,
+  option : @telnet.OptionCode?,
+) -> FuzzObservedEvent {
+  FuzzObservedEvent::Error(@telnet.TelnetError::{ kind, offset, byte, option })
+}
+
+///|
+fn fuzz_reference_incomplete_subnegotiation_byte(sub : Array[Byte]) -> Byte? {
+  if sub.length() > 0 {
+    Some(sub[sub.length() - 1])
+  } else {
+    None
+  }
+}
+
+///|
+fn fuzz_reference_core_observation(input : Bytes) -> FuzzParseObservation {
+  // This deliberately dumb scanner is independent from Parser internals and is
+  // only used with fuzz_core_reference_config(): Preserve CR handling, generous
+  // data/subnegotiation caps, and normalized adjacent data events. It models
+  // core TELNET framing (data, escaped IAC, commands, negotiations, and
+  // subnegotiation boundaries), not capacity/discard policy or NVT CR rules.
+  let events : Array[FuzzObservedEvent] = []
+  let data : Array[Byte] = []
+  let sub : Array[Byte] = []
+  let mut mode = FuzzCoreReferenceMode::Normal
+  let mut complete = true
+  for i = 0; i < input.length(); i = i + 1 {
+    let value = input[i]
+    match mode {
+      FuzzCoreReferenceMode::Normal =>
+        if value == byte(255) {
+          fuzz_flush_reference_data(events, data)
+          mode = FuzzCoreReferenceMode::AfterIac
+        } else {
+          data.push(value)
+        }
+      FuzzCoreReferenceMode::AfterIac =>
+        if value == byte(255) {
+          data.push(byte(255))
+          mode = FuzzCoreReferenceMode::Normal
+        } else {
+          match fuzz_reference_negotiation_verb(value) {
+            Some((verb, verb_byte)) =>
+              mode = FuzzCoreReferenceMode::AfterNegotiationVerb(
+                verb, verb_byte,
+              )
+            None =>
+              match fuzz_reference_command(value) {
+                Some(@telnet.Command::SB) =>
+                  mode = FuzzCoreReferenceMode::AfterSubnegotiationStart
+                Some(@telnet.Command::SE) => {
+                  fuzz_flush_reference_data(events, data)
+                  events.push(
+                    fuzz_reference_error(
+                      @telnet.TelnetErrorKind::UnexpectedSubnegotiationEnd,
+                      i,
+                      Some(value),
+                      None,
+                    ),
+                  )
+                  mode = FuzzCoreReferenceMode::Normal
+                }
+                Some(command) => {
+                  fuzz_flush_reference_data(events, data)
+                  events.push(FuzzObservedEvent::Command(command))
+                  mode = FuzzCoreReferenceMode::Normal
+                }
+                None => {
+                  fuzz_flush_reference_data(events, data)
+                  events.push(
+                    fuzz_reference_error(
+                      @telnet.TelnetErrorKind::InvalidCommandByte,
+                      i,
+                      Some(value),
+                      None,
+                    ),
+                  )
+                  mode = FuzzCoreReferenceMode::Normal
+                }
+              }
+          }
+        }
+      FuzzCoreReferenceMode::AfterNegotiationVerb(verb, _) => {
+        fuzz_flush_reference_data(events, data)
+        events.push(
+          FuzzObservedEvent::Negotiation(@telnet.NegotiationEvent::{
+            verb,
+            option: @telnet.OptionCode::new(value),
+          }),
+        )
+        mode = FuzzCoreReferenceMode::Normal
+      }
+      FuzzCoreReferenceMode::AfterSubnegotiationStart => {
+        sub.clear()
+        mode = FuzzCoreReferenceMode::InSubnegotiation(
+          @telnet.OptionCode::new(value),
+        )
+      }
+      FuzzCoreReferenceMode::InSubnegotiation(option) =>
+        if value == byte(255) {
+          mode = FuzzCoreReferenceMode::InSubnegotiationAfterIac(option)
+        } else {
+          sub.push(value)
+        }
+      FuzzCoreReferenceMode::InSubnegotiationAfterIac(option) =>
+        if value == byte(255) {
+          sub.push(byte(255))
+          mode = FuzzCoreReferenceMode::InSubnegotiation(option)
+        } else if value == byte(240) {
+          events.push(
+            FuzzObservedEvent::Subnegotiation(
+              option,
+              Bytes::from_array(sub.copy()),
+            ),
+          )
+          sub.clear()
+          mode = FuzzCoreReferenceMode::Normal
+        } else {
+          events.push(
+            fuzz_reference_error(
+              @telnet.TelnetErrorKind::InvalidCommandByte,
+              i,
+              Some(value),
+              None,
+            ),
+          )
+          mode = FuzzCoreReferenceMode::InSubnegotiation(option)
+        }
+    }
+  }
+  match mode {
+    FuzzCoreReferenceMode::Normal => fuzz_flush_reference_data(events, data)
+    FuzzCoreReferenceMode::AfterIac => {
+      fuzz_flush_reference_data(events, data)
+      events.push(
+        fuzz_reference_error(
+          @telnet.TelnetErrorKind::IncompleteIac,
+          if input.length() > 0 {
+            input.length() - 1
+          } else {
+            0
+          },
+          Some(byte(255)),
+          None,
+        ),
+      )
+      complete = false
+    }
+    FuzzCoreReferenceMode::AfterNegotiationVerb(_, verb_byte) => {
+      fuzz_flush_reference_data(events, data)
+      events.push(
+        fuzz_reference_error(
+          @telnet.TelnetErrorKind::IncompleteNegotiation,
+          if input.length() > 0 {
+            input.length() - 1
+          } else {
+            0
+          },
+          Some(verb_byte),
+          None,
+        ),
+      )
+      complete = false
+    }
+    FuzzCoreReferenceMode::AfterSubnegotiationStart => {
+      events.push(
+        fuzz_reference_error(
+          @telnet.TelnetErrorKind::IncompleteSubnegotiation,
+          if input.length() > 0 {
+            input.length() - 1
+          } else {
+            0
+          },
+          None,
+          None,
+        ),
+      )
+      complete = false
+    }
+    FuzzCoreReferenceMode::InSubnegotiation(_) => {
+      events.push(
+        fuzz_reference_error(
+          @telnet.TelnetErrorKind::IncompleteSubnegotiation,
+          if input.length() > 0 {
+            input.length() - 1
+          } else {
+            0
+          },
+          fuzz_reference_incomplete_subnegotiation_byte(sub),
+          None,
+        ),
+      )
+      complete = false
+    }
+    FuzzCoreReferenceMode::InSubnegotiationAfterIac(_) => {
+      events.push(
+        fuzz_reference_error(
+          @telnet.TelnetErrorKind::IncompleteSubnegotiation,
+          if input.length() > 0 {
+            input.length() - 1
+          } else {
+            0
+          },
+          fuzz_reference_incomplete_subnegotiation_byte(sub),
+          None,
+        ),
+      )
+      complete = false
+    }
+  }
+  FuzzParseObservation::{ events, complete }
+}
+
+///|
+fn fuzz_core_reference_simple_command_byte(index : Int) -> Byte {
+  match index % 9 {
+    0 => byte(241)
+    1 => byte(242)
+    2 => byte(243)
+    3 => byte(244)
+    4 => byte(245)
+    5 => byte(246)
+    6 => byte(247)
+    7 => byte(248)
+    _ => byte(249)
+  }
+}
+
+///|
+fn fuzz_core_reference_negotiation_byte(index : Int) -> Byte {
+  match index % 4 {
+    0 => byte(251)
+    1 => byte(252)
+    2 => byte(253)
+    _ => byte(254)
+  }
+}
+
+///|
+fn fuzz_core_reference_data_byte(value : Byte) -> Byte {
+  if value == byte(255) {
+    byte(42)
+  } else {
+    value
+  }
+}
+
+///|
+fn fuzz_core_reference_wire(seed : Int, steps : Int) -> Bytes {
+  let out : Array[Byte] = []
+  let mut rng = fuzz_rng(seed)
+  for step = 0; step < steps; step = step + 1 {
+    let (r1, choice) = rng.bounded_int(8)
+    rng = r1
+    match choice {
+      0 | 1 => {
+        let (r2, run) = rng.bounded_int(7)
+        rng = r2
+        for j = 0; j <= run; j = j + 1 {
+          let (next, value) = rng.byte()
+          rng = next
+          out.push(fuzz_core_reference_data_byte(value))
+        }
+      }
+      2 => {
+        out.push(byte(255))
+        out.push(byte(255))
+      }
+      3 => {
+        let (next, index) = rng.bounded_int(9)
+        rng = next
+        out.push(byte(255))
+        out.push(fuzz_core_reference_simple_command_byte(index))
+      }
+      4 => {
+        let (r2, verb_index) = rng.bounded_int(4)
+        let (r3, option) = r2.byte()
+        rng = r3
+        out.push(byte(255))
+        out.push(fuzz_core_reference_negotiation_byte(verb_index))
+        out.push(option)
+      }
+      5 | 6 => {
+        let (r2, option) = rng.byte()
+        let (r3, payload_length) = r2.bounded_int(9)
+        rng = r3
+        out.push(byte(255))
+        out.push(byte(250))
+        out.push(option)
+        for j = 0; j < payload_length; j = j + 1 {
+          let (next, payload) = rng.byte()
+          rng = next
+          if payload == byte(255) {
+            out.push(byte(255))
+            out.push(byte(255))
+          } else {
+            out.push(payload)
+          }
+        }
+        out.push(byte(255))
+        out.push(byte(240))
+      }
+      _ => {
+        out.push(byte(240))
+        out.push(byte(250))
+        out.push(byte(254))
+      }
+    }
+  }
+  Bytes::from_array(out)
+}
+
+///|
+fn fuzz_assert_core_reference_match(
+  case_name : String,
+  input : Bytes,
+  seed : Int,
+) -> Unit {
+  let expected = fuzz_reference_core_observation(input)
+  let observed = fuzz_observe_whole(fuzz_core_reference_config(), input)
+  if observed != expected {
+    println(
+      "core reference fuzz case=" +
+      case_name +
+      " " +
+      fuzz_reproduction_line(seed, input),
+    )
+    println("expected " + fuzz_observation_summary(expected))
+    println("observed " + fuzz_observation_summary(observed))
+    abort("core reference differential mismatch")
+  }
+}
+
+///|
+test "parser differential fuzz matches simple core reference seeds" {
+  fuzz_assert_core_reference_match("empty", fuzz_bytes_from_ints([]), 17000)
+  fuzz_assert_core_reference_match(
+    "plain-data",
+    fuzz_bytes_from_ints([65, 66]),
+    17001,
+  )
+  fuzz_assert_core_reference_match(
+    "escaped-iac-data",
+    fuzz_bytes_from_ints([65, 255, 255, 66]),
+    17002,
+  )
+  fuzz_assert_core_reference_match(
+    "simple-command",
+    fuzz_bytes_from_ints([65, 255, 241, 66]),
+    17003,
+  )
+  fuzz_assert_core_reference_match(
+    "negotiation-triplet",
+    fuzz_bytes_from_ints([255, 251, 1]),
+    17004,
+  )
+  fuzz_assert_core_reference_match(
+    "subnegotiation-with-escaped-iac",
+    fuzz_bytes_from_ints([255, 250, 31, 1, 255, 255, 2, 255, 240]),
+    17005,
+  )
+  fuzz_assert_core_reference_match(
+    "incomplete-iac",
+    fuzz_bytes_from_ints([255]),
+    17006,
+  )
+  fuzz_assert_core_reference_match(
+    "incomplete-negotiation",
+    fuzz_bytes_from_ints([255, 253]),
+    17007,
+  )
+  fuzz_assert_core_reference_match(
+    "incomplete-subnegotiation",
+    fuzz_bytes_from_ints([255, 250, 31, 65]),
+    17008,
+  )
+  fuzz_assert_core_reference_match(
+    "unexpected-se",
+    fuzz_bytes_from_ints([255, 240]),
+    17009,
+  )
+  fuzz_assert_core_reference_match(
+    "invalid-command-byte",
+    fuzz_bytes_from_ints([255, 1]),
+    17010,
+  )
+  fuzz_assert_core_reference_match(
+    "invalid-subnegotiation-iac-command",
+    fuzz_bytes_from_ints([255, 250, 31, 1, 255, 241, 2, 255, 240]),
+    17011,
+  )
+}
+
+///|
+test "parser differential fuzz matches generated complete core streams" {
+  for iteration = 0; iteration < 48; iteration = iteration + 1 {
+    let seed = 18000 + iteration * 173
+    let steps = 1 + iteration % 18
+    fuzz_assert_core_reference_match(
+      "generated-" + iteration.to_string(),
+      fuzz_core_reference_wire(seed, steps),
+      seed,
+    )
+  }
+}
+
+///|
 fn fuzz_cr_policy_name(policy : @telnet.CrPolicy) -> String {
   match policy {
     @telnet.CrPolicy::Preserve => "Preserve"
