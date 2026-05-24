@@ -1,1 +1,3 @@
-
+options(
+  "native-stub": [ "telnet_native.c" ],
+)

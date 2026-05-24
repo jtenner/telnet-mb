@@ -132,15 +132,52 @@ pub fn Parser::feed(self : Parser, chunk : Bytes) -> ParserFeedResult {
 }
 
 ///|
-fn span_has_iac(span : ByteSpan) -> Bool {
+pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
+  self.feed_span_with_events(span, Array::new())
+}
+
+///|
+pub fn Parser::feed_span_into(
+  self : Parser,
+  span : ByteSpan,
+  events : Array[Event],
+) -> ParserFeedResult {
+  events.clear()
+  self.feed_span_with_events(span, events)
+}
+
+///|
+#cfg(target="native")
+#borrow(bytes)
+extern "C" fn find_byte_native(
+  bytes : Bytes,
+  start : Int,
+  length : Int,
+  needle : Int,
+) -> Int = "moonbit_telnet_find_byte"
+
+///|
+#cfg(not(target="native"))
+fn find_byte_native(
+  bytes : Bytes,
+  start : Int,
+  length : Int,
+  needle : Int,
+) -> Int {
+  let target = b(needle)
   let mut i = 0
-  while i < span.length {
-    if span.bytes[span.start + i] == b(255) {
-      return true
+  while i < length {
+    if bytes[start + i] == target {
+      return i
     }
     i = i + 1
   }
-  false
+  -1
+}
+
+///|
+fn span_has_iac(span : ByteSpan) -> Bool {
+  find_byte_native(span.bytes, span.start, span.length, 255) >= 0
 }
 
 ///|
@@ -191,9 +228,12 @@ fn can_use_preserve_data_fast_path(parser : Parser, span : ByteSpan) -> Bool {
 }
 
 ///|
-pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
+fn Parser::feed_span_with_events(
+  self : Parser,
+  span : ByteSpan,
+  events : Array[Event],
+) -> ParserFeedResult {
   if can_use_preserve_data_fast_path(self, span) {
-    let events = Array::new()
     push_preserved_data_events(
       events,
       span,
@@ -219,7 +259,6 @@ pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
       bytes_consumed: span.length,
     }
   }
-  let events = Array::new()
   let data = if self.pending_cr {
     Array::new()
   } else {
@@ -266,11 +305,13 @@ pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
         } else if self.config.cr_policy == CrPolicy::Preserve &&
           self.config.max_data_chunk_bytes > 0 {
           let run_start = i
-          let mut run_end = i + 1
-          while run_end < span.length &&
-                span.bytes[span.start + run_end] != b(255) {
-            run_end = run_end + 1
-          }
+          let next_iac = find_byte_native(
+            span.bytes,
+            span.start + i,
+            span.length - i,
+            255,
+          )
+          let run_end = if next_iac < 0 { span.length } else { i + next_iac }
           push_preserved_data_events(
             events,
             ByteSpan::{
@@ -401,11 +442,13 @@ pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
           mode = ParserMode::InSubnegotiationAfterIac(opt)
         } else {
           let run_start = i
-          let mut run_end = i + 1
-          while run_end < span.length &&
-                span.bytes[span.start + run_end] != b(255) {
-            run_end = run_end + 1
-          }
+          let next_iac = find_byte_native(
+            span.bytes,
+            span.start + i,
+            span.length - i,
+            255,
+          )
+          let run_end = if next_iac < 0 { span.length } else { i + next_iac }
           if !discarding_subnegotiation {
             let run_len = run_end - run_start
             let remaining_capacity = self.config.max_subnegotiation_bytes -
@@ -754,6 +797,59 @@ pub fn Encoder::encode_data(
 }
 
 ///|
+pub fn Encoder::encode_data_assume_capacity(
+  self : Encoder,
+  data : ByteSpan,
+  output : Bytes,
+  required : Int,
+) -> Result[EncodeResult, EncodeError] {
+  if data.start < 0 ||
+    data.length < 0 ||
+    data.start + data.length > data.bytes.length() {
+    return Err(EncodeError::{
+      kind: EncodeErrorKind::UnsupportedEncoding,
+      offset: 0,
+      required_capacity: 0,
+    })
+  }
+  if required < 0 {
+    return Err(EncodeError::{
+      kind: EncodeErrorKind::OutputBufferTooSmall,
+      offset: 0,
+      required_capacity: required,
+    })
+  }
+  match output_too_small(required, output) {
+    Some(e) => return e
+    None => ()
+  }
+  if !self.canonical {
+    FixedArray::blit_from_bytes(
+      unsafe_bytes_to_fixedarray(output),
+      0,
+      data.bytes,
+      data.start,
+      data.length,
+    )
+    return Ok(EncodeResult::{
+      bytes_written: required,
+      required_capacity: required,
+    })
+  }
+  let mut j = 0
+  for i = 0; i < data.length; i = i + 1 {
+    let x = data.bytes[data.start + i]
+    setb(output, j, x)
+    j = j + 1
+    if x == b(255) {
+      setb(output, j, b(255))
+      j = j + 1
+    }
+  }
+  Ok(EncodeResult::{ bytes_written: required, required_capacity: required })
+}
+
+///|
 pub fn Encoder::encode_command(
   _self : Encoder,
   command : Command,
@@ -806,6 +902,42 @@ pub fn Encoder::encode_subnegotiation(
   output : Bytes,
 ) -> Result[EncodeResult, EncodeError] {
   let required = 5 + span_required(event.payload, true)
+  match output_too_small(required, output) {
+    Some(e) => return e
+    None => ()
+  }
+  setb(output, 0, b(255))
+  setb(output, 1, b(250))
+  setb(output, 2, event.option.value)
+  let mut j = 3
+  for i = 0; i < event.payload.length; i = i + 1 {
+    let x = event.payload.bytes[event.payload.start + i]
+    setb(output, j, x)
+    j = j + 1
+    if x == b(255) {
+      setb(output, j, b(255))
+      j = j + 1
+    }
+  }
+  setb(output, j, b(255))
+  setb(output, j + 1, b(240))
+  Ok(EncodeResult::{ bytes_written: required, required_capacity: required })
+}
+
+///|
+pub fn Encoder::encode_subnegotiation_assume_capacity(
+  _self : Encoder,
+  event : SubnegotiationEvent,
+  output : Bytes,
+  required : Int,
+) -> Result[EncodeResult, EncodeError] {
+  if required < 0 {
+    return Err(EncodeError::{
+      kind: EncodeErrorKind::OutputBufferTooSmall,
+      offset: 0,
+      required_capacity: required,
+    })
+  }
   match output_too_small(required, output) {
     Some(e) => return e
     None => ()

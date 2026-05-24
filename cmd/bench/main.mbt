@@ -207,6 +207,36 @@ fn parser_feed_once(
 }
 
 ///|
+fn parser_feed_once_into(
+  input : Bytes,
+  chunk_size : Int,
+  cfg : @telnet.ParserConfig,
+) -> Int {
+  let mut parser = @telnet.Parser::new(cfg)
+  let event_buffer = Array::new()
+  let mut consumed = 0
+  let mut events = 0
+  let mut checksum = 0
+  while consumed < input.length() {
+    let n = if input.length() - consumed < chunk_size {
+      input.length() - consumed
+    } else {
+      chunk_size
+    }
+    let result = parser.feed_span_into(
+      @telnet.ByteSpan::{ bytes: input, start: consumed, length: n },
+      event_buffer,
+    )
+    parser = result.parser
+    consumed = consumed + result.bytes_consumed
+    events = events + result.events.length()
+    checksum = checksum + events + parser.checkpoint().absolute_offset
+  }
+  let finish = parser.finish()
+  checksum + finish.events.length() + (if finish.complete { 1 } else { 0 })
+}
+
+///|
 fn encode_data_once(input : Bytes, canonical : Bool) -> Int {
   let encoder = if canonical {
     @telnet.Encoder::canonical()
@@ -224,6 +254,24 @@ fn encode_data_once(input : Bytes, canonical : Bool) -> Int {
 }
 
 ///|
+fn encode_data_assume_capacity_once(
+  input : Bytes,
+  required : Int,
+  canonical : Bool,
+) -> Int {
+  let encoder = if canonical {
+    @telnet.Encoder::canonical()
+  } else {
+    @telnet.Encoder::new()
+  }
+  let output = Bytes::new(required)
+  match encoder.encode_data_assume_capacity(span(input), output, required) {
+    Ok(r) => r.bytes_written + r.required_capacity + output[0].to_int()
+    Err(e) => e.required_capacity
+  }
+}
+
+///|
 fn encode_subnegotiation_once(payload : Bytes) -> Int {
   let encoder = @telnet.Encoder::canonical()
   let event = @telnet.SubnegotiationEvent::{
@@ -235,6 +283,23 @@ fn encode_subnegotiation_once(payload : Bytes) -> Int {
   )
   let output = Bytes::new(required)
   match encoder.encode_subnegotiation(event, output) {
+    Ok(r) => r.bytes_written + output[required - 1].to_int()
+    Err(e) => e.required_capacity
+  }
+}
+
+///|
+fn encode_subnegotiation_assume_capacity_once(
+  payload : Bytes,
+  required : Int,
+) -> Int {
+  let encoder = @telnet.Encoder::canonical()
+  let event = @telnet.SubnegotiationEvent::{
+    option: opt(24),
+    payload: span(payload),
+  }
+  let output = Bytes::new(required)
+  match encoder.encode_subnegotiation_assume_capacity(event, output, required) {
     Ok(r) => r.bytes_written + output[required - 1].to_int()
     Err(e) => e.required_capacity
   }
@@ -545,6 +610,16 @@ fn main {
       ),
     )
   })
+  run_bench("parser_plain_1m_8192_chunks_into", 40, plain_1m.length(), fn() {
+    parser_feed_once_into(
+      plain_1m,
+      8192,
+      config(
+        @telnet.CrPolicy::Preserve,
+        @telnet.DataCoalescing::CoalesceUntilCommand,
+      ),
+    )
+  })
   run_bench("parser_plain_1m_1460_chunks", 30, plain_1m.length(), fn() {
     parser_feed_once(
       plain_1m,
@@ -577,6 +652,16 @@ fn main {
   })
   run_bench("parser_iac_escaped_sparse", 60, sparse_iac.length(), fn() {
     parser_feed_once(
+      sparse_iac,
+      8192,
+      config(
+        @telnet.CrPolicy::Preserve,
+        @telnet.DataCoalescing::CoalesceUntilCommand,
+      ),
+    )
+  })
+  run_bench("parser_iac_escaped_sparse_into", 60, sparse_iac.length(), fn() {
+    parser_feed_once_into(
       sparse_iac,
       8192,
       config(
@@ -736,20 +821,61 @@ fn main {
     )
   })
 
+  let encoder = @telnet.Encoder::canonical()
+  let sparse_iac_required = encoder.required_capacity(
+    @telnet.EncodeItem::EscapedData(span(sparse_iac)),
+  )
+  let dense_iac_required = encoder.required_capacity(
+    @telnet.EncodeItem::EscapedData(span(dense_iac)),
+  )
+  let all_iac_required = encoder.required_capacity(
+    @telnet.EncodeItem::EscapedData(span(all_iac)),
+  )
+  let sub_8192_required = encoder.required_capacity(
+    @telnet.EncodeItem::Subnegotiation(@telnet.SubnegotiationEvent::{
+      option: opt(24),
+      payload: span(sub_8192),
+    }),
+  )
   run_bench("encoder_raw_1m", 60, plain_1m.length(), fn() {
     encode_data_once(plain_1m, false)
+  })
+  run_bench("encoder_raw_1m_assume_capacity", 60, plain_1m.length(), fn() {
+    encode_data_assume_capacity_once(plain_1m, plain_1m.length(), false)
   })
   run_bench("encoder_canonical_no_iac", 60, plain_1m.length(), fn() {
     encode_data_once(plain_1m, true)
   })
+  run_bench("encoder_canonical_no_iac_assume_capacity", 60, plain_1m.length(), fn() {
+    encode_data_assume_capacity_once(plain_1m, plain_1m.length(), true)
+  })
   run_bench("encoder_canonical_sparse_iac", 80, sparse_iac.length(), fn() {
     encode_data_once(sparse_iac, true)
   })
+  run_bench(
+    "encoder_canonical_sparse_iac_assume_capacity",
+    80,
+    sparse_iac.length(),
+    fn() {
+      encode_data_assume_capacity_once(sparse_iac, sparse_iac_required, true)
+    },
+  )
   run_bench("encoder_canonical_dense_iac", 80, dense_iac.length(), fn() {
     encode_data_once(dense_iac, true)
   })
+  run_bench(
+    "encoder_canonical_dense_iac_assume_capacity",
+    80,
+    dense_iac.length(),
+    fn() {
+      encode_data_assume_capacity_once(dense_iac, dense_iac_required, true)
+    },
+  )
   run_bench("encoder_canonical_all_iac", 80, all_iac.length(), fn() {
     encode_data_once(all_iac, true)
+  })
+  run_bench("encoder_canonical_all_iac_assume_capacity", 80, all_iac.length(), fn() {
+    encode_data_assume_capacity_once(all_iac, all_iac_required, true)
   })
   run_bench("encoder_command", 50000, 0, fn() { encode_command_loop(64) })
   run_bench("encoder_negotiation", 50000, 0, fn() {
@@ -758,6 +884,14 @@ fn main {
   run_bench("encoder_subnegotiation_8k", 4000, sub_8192.length(), fn() {
     encode_subnegotiation_once(sub_8192)
   })
+  run_bench(
+    "encoder_subnegotiation_8k_assume_capacity",
+    4000,
+    sub_8192.length(),
+    fn() {
+      encode_subnegotiation_assume_capacity_once(sub_8192, sub_8192_required)
+    },
+  )
   run_bench("encoder_required_capacity_escaped", 200, dense_iac.length(), fn() {
     @telnet.Encoder::canonical().required_capacity(
       @telnet.EncodeItem::EscapedData(span(dense_iac)),

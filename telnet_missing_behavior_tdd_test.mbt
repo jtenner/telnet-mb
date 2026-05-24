@@ -119,6 +119,18 @@ test "TDD parser feed_span honors nonzero starts and short lengths" {
 }
 
 ///|
+test "TDD parser feed_span_into reuses caller event buffer" {
+  let parser = @telnet.Parser::new(missing_default_config())
+  let events = [cmd(@telnet.Command::NOP)]
+  let result = parser.feed_span_into(
+    @telnet.ByteSpan::{ bytes: bytes([65, 255, 255]), start: 0, length: 3 },
+    events,
+  )
+  assert_true(result.events == [data([65]), data([255])])
+  assert_true(events == result.events)
+}
+
+///|
 test "TDD parser feed_span preserves partial sequence state" {
   let parser = @telnet.Parser::new(missing_default_config())
   let first = parser.feed_span(@telnet.ByteSpan::{
@@ -325,6 +337,36 @@ test "TDD encoder specialized methods match encode_item wrappers" {
     }),
     [255, 250, 31, 0, 80, 0, 24, 255, 240],
   )
+}
+
+///|
+test "TDD encoder assume-capacity methods match regular encoders" {
+  let encoder = @telnet.Encoder::canonical()
+  let data = span([65, 255, 66])
+  let data_required = encoder.required_capacity(
+    @telnet.EncodeItem::EscapedData(data),
+  )
+  let data_out = missing_output(data_required, 0)
+  match encoder.encode_data_assume_capacity(data, data_out, data_required) {
+    Ok(r) => {
+      assert_true(r.bytes_written == data_required)
+      assert_true(data_out == bytes([65, 255, 255, 66]))
+    }
+    Err(_) => assert_true(false)
+  }
+  let event = @telnet.SubnegotiationEvent::{ option: opt(24), payload: data }
+  let sb_required = encoder.required_capacity(
+    @telnet.EncodeItem::Subnegotiation(event),
+  )
+  let sb_out = missing_output(sb_required, 0)
+  match
+    encoder.encode_subnegotiation_assume_capacity(event, sb_out, sb_required) {
+    Ok(r) => {
+      assert_true(r.bytes_written == sb_required)
+      assert_true(sb_out == bytes([255, 250, 24, 65, 255, 255, 66, 255, 240]))
+    }
+    Err(_) => assert_true(false)
+  }
 }
 
 ///|

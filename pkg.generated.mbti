@@ -115,9 +115,11 @@ pub(all) struct Encoder {
 pub fn Encoder::canonical() -> Self
 pub fn Encoder::encode_command(Self, Command, Bytes) -> Result[EncodeResult, EncodeError]
 pub fn Encoder::encode_data(Self, ByteSpan, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn Encoder::encode_data_assume_capacity(Self, ByteSpan, Bytes, Int) -> Result[EncodeResult, EncodeError]
 pub fn Encoder::encode_item(Self, EncodeItem, Bytes) -> Result[EncodeResult, EncodeError]
 pub fn Encoder::encode_negotiation(Self, NegotiationEvent, Bytes) -> Result[EncodeResult, EncodeError]
 pub fn Encoder::encode_subnegotiation(Self, SubnegotiationEvent, Bytes) -> Result[EncodeResult, EncodeError]
+pub fn Encoder::encode_subnegotiation_assume_capacity(Self, SubnegotiationEvent, Bytes, Int) -> Result[EncodeResult, EncodeError]
 pub fn Encoder::new() -> Self
 pub fn Encoder::required_capacity(Self, EncodeItem) -> Int
 
@@ -335,6 +337,7 @@ pub fn Parser::default() -> Self
 pub fn Parser::default_config() -> ParserConfig
 pub fn Parser::feed(Self, Bytes) -> ParserFeedResult
 pub fn Parser::feed_span(Self, ByteSpan) -> ParserFeedResult
+pub fn Parser::feed_span_into(Self, ByteSpan, Array[Event]) -> ParserFeedResult
 pub fn Parser::finish(Self) -> ParserFinishResult
 pub fn Parser::new(ParserConfig) -> Self
 pub fn Parser::reset(Self) -> Self
