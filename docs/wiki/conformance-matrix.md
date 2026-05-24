@@ -23,7 +23,12 @@ This matrix maps current source-of-truth requirements to fixture and behavioral 
 | START_TLS state boundary | RFC 2946 + project security policy | `telnet_test.mbt`, `telnet_edge_cases_test.mbt`, `telnet_blind_spots_test.mbt`, `telnet_scenarios_test.mbt`, `telnet_behavior_tdd_test.mbt`, `telnet_expanded_behavior_tdd_test.mbt` | Fixture + failing behavioral TDD |
 | Encoder canonicalization and sizing | RFC 854 + project performance policy | `telnet_test.mbt`, `telnet_comprehensive_spec_test.mbt`, `telnet_blind_spots_test.mbt`, `telnet_scenarios_test.mbt`, `telnet_behavior_tdd_test.mbt`, `telnet_expanded_behavior_tdd_test.mbt` | Fixture + failing behavioral TDD |
 | Hostile/stress inputs | Project security policy | `telnet_comprehensive_spec_test.mbt`, `telnet_scenarios_test.mbt` | Fixture coverage |
-| Public API contracts | Project API policy | `telnet_blind_spots_test.mbt`, `telnet_behavior_tdd_test.mbt`, `telnet_expanded_behavior_tdd_test.mbt`, `api.mbt`, `docs/wiki/api-contract.md` | Public skeleton exposed with placeholders; expanded behavioral tests intentionally fail until implemented |
+| Public API contracts | Project API policy | `telnet_blind_spots_test.mbt`, `telnet_behavior_tdd_test.mbt`, `telnet_expanded_behavior_tdd_test.mbt`, `telnet_missing_behavior_tdd_test.mbt`, `api.mbt`, `docs/wiki/api-contract.md` | Public skeleton exposed with placeholders; expanded behavioral tests intentionally fail until implemented |
+| Parser state, spans, offsets, and consumption accounting | RFC 854 + project zero-copy policy | `telnet_missing_behavior_tdd_test.mbt` | Failing behavioral TDD |
+| Encoder method equivalence and error metadata | RFC 854 + project API policy | `telnet_missing_behavior_tdd_test.mbt` | Failing behavioral TDD |
+| Negotiator mutation boundaries and option independence | RFC 1143 + project API policy | `telnet_missing_behavior_tdd_test.mbt` | Failing behavioral TDD |
+| Option codec roundtrips and string edge cases | RFC 1091/RFC 1073/RFC 1572/RFC 2066/RFC 1184/RFC 2946 | `telnet_missing_behavior_tdd_test.mbt` | Failing behavioral TDD |
+| Future Session/BINARY/START_TLS transcript policy | RFC 856/RFC 2946 + project session policy | `telnet_missing_behavior_tdd_test.mbt`, `docs/wiki/api-contract.md` | Failing behavioral TDD + documented TODO |
 
 ## Remaining status labels
 

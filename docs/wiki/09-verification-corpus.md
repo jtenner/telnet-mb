@@ -54,6 +54,7 @@ The initial corpus intentionally mirrors categories commonly tested by mature TE
 17. Scenario fixtures for login/password ECHO behavior, NAWS/TERMINAL-TYPE startup, MUD-style negotiation, terminal resize, option side policy, encoder sizing formulas, canonicalization rejection cases, START_TLS transition state, hostile transcripts, and conformance traceability.
 18. Behavioral TDD tests in `telnet_behavior_tdd_test.mbt` that call the public placeholder APIs directly and are expected to fail until production parser, encoder, negotiator, mapping, and option-codec implementations exist.
 19. Expanded behavioral TDD tests in `telnet_expanded_behavior_tdd_test.mbt` for remaining blind spots: parser split-point invariance, CR policy boundaries, data coalescing, strict/lenient invalid-command recovery, malformed subnegotiation recovery, RFC 1143 queued states and `apply`/`state_for`, encoder atomicity and exact capacity formulas, raw data bypass, malformed option codecs, and mapping-helper range checks.
+20. Final pre-implementation behavioral TDD families in `telnet_missing_behavior_tdd_test.mbt`: parser partial-state checkpoints, sliced input through `feed_span`, finish idempotence, absolute offset and `bytes_consumed` accounting, data/subnegotiation capacity boundaries, DM/Synch events, encoder method equivalence and error metadata, negotiator transition metadata/non-mutation/option independence, option codec roundtrips and string edge cases, START_TLS transcript policy, and BINARY/session TODO fixtures.
 
 ## Important limitation
 
