@@ -1363,6 +1363,400 @@ test "IAC stress fuzz covers command boundaries" {
 }
 
 ///|
+fn fuzz_subnegotiation_config(
+  max_subnegotiation_bytes : Int,
+) -> @telnet.ParserConfig {
+  @telnet.ParserConfig::{
+    max_data_chunk_bytes: 64,
+    max_subnegotiation_bytes,
+    cr_policy: @telnet.CrPolicy::Preserve,
+    data_coalescing: @telnet.DataCoalescing::CoalesceUntilCommand,
+    strict_commands: true,
+  }
+}
+
+///|
+fn fuzz_int_array_literal(items : Array[Int]) -> String {
+  let mut out = "["
+  for i = 0; i < items.length(); i = i + 1 {
+    if i > 0 {
+      out = out + ", "
+    }
+    out = out + items[i].to_string()
+  }
+  out + "]"
+}
+
+///|
+fn fuzz_subnegotiation_failure_prefix(
+  case_name : String,
+  seed : Int,
+  config : @telnet.ParserConfig,
+  input : Bytes,
+) -> String {
+  "subnegotiation fuzz case=" +
+  case_name +
+  " seed=" +
+  seed.to_string() +
+  " length=" +
+  input.length().to_string() +
+  " max_subnegotiation_bytes=" +
+  config.max_subnegotiation_bytes.to_string() +
+  " wire=" +
+  fuzz_bytes_literal(input)
+}
+
+///|
+fn fuzz_assert_subnegotiation_observation(
+  case_name : String,
+  config : @telnet.ParserConfig,
+  input : Bytes,
+  expected : FuzzParseObservation,
+  seed : Int,
+) -> Unit {
+  let observed = fuzz_observe_whole(config, input)
+  if observed != expected {
+    println(fuzz_subnegotiation_failure_prefix(case_name, seed, config, input))
+    println("expected " + fuzz_observation_summary(expected))
+    println("observed " + fuzz_observation_summary(observed))
+    abort("subnegotiation fuzz observation mismatch")
+  }
+}
+
+///|
+fn fuzz_assert_subnegotiation_streaming_matches(
+  case_name : String,
+  config : @telnet.ParserConfig,
+  input : Bytes,
+  chunks : Array[Int],
+  whole : FuzzParseObservation,
+  seed : Int,
+) -> Unit raise {
+  let chunked = fuzz_observe_chunks(config, input, chunks)
+  if chunked != whole {
+    println(fuzz_subnegotiation_failure_prefix(case_name, seed, config, input))
+    println("chunks=" + fuzz_int_array_literal(chunks))
+    println("whole " + fuzz_observation_summary(whole))
+    println("chunked " + fuzz_observation_summary(chunked))
+    abort("subnegotiation fuzz streaming mismatch")
+  }
+}
+
+///|
+fn fuzz_assert_subnegotiation_case(
+  case_name : String,
+  config : @telnet.ParserConfig,
+  input : Bytes,
+  expected : FuzzParseObservation,
+  seed : Int,
+) -> Unit raise {
+  fuzz_assert_parser_smoke(config, input)
+  fuzz_assert_subnegotiation_observation(
+    case_name, config, input, expected, seed,
+  )
+  let whole = fuzz_observe_whole(config, input)
+  for split = 0; split <= input.length(); split = split + 1 {
+    fuzz_assert_subnegotiation_streaming_matches(
+      case_name,
+      config,
+      input,
+      [0, split, 0, input.length() - split, 0],
+      whole,
+      seed,
+    )
+  }
+  fuzz_assert_subnegotiation_streaming_matches(
+    case_name,
+    config,
+    input,
+    fuzz_one_byte_chunks(input.length()),
+    whole,
+    seed,
+  )
+}
+
+///|
+fn fuzz_assert_subnegotiation_safe_case(
+  case_name : String,
+  config : @telnet.ParserConfig,
+  input : Bytes,
+  seed : Int,
+) -> Unit raise {
+  fuzz_assert_parser_smoke(config, input)
+  let whole = fuzz_observe_whole(config, input)
+  fuzz_assert_subnegotiation_streaming_matches(
+    case_name,
+    config,
+    input,
+    fuzz_one_byte_chunks(input.length()),
+    whole,
+    seed,
+  )
+  for pattern = 0; pattern < 3; pattern = pattern + 1 {
+    fuzz_assert_subnegotiation_streaming_matches(
+      case_name,
+      config,
+      input,
+      fuzz_random_chunks(seed + pattern * 409, input.length()),
+      whole,
+      seed,
+    )
+  }
+}
+
+///|
+fn fuzz_raw_subnegotiation_wire(
+  option : Byte?,
+  payload : Bytes,
+  closing : Bool,
+) -> Bytes {
+  let out : Array[Byte] = []
+  out.push(byte(255))
+  out.push(byte(250))
+  match option {
+    Some(value) => out.push(value)
+    None => ()
+  }
+  for i = 0; i < payload.length(); i = i + 1 {
+    out.push(payload[i])
+  }
+  if closing {
+    out.push(byte(255))
+    out.push(byte(240))
+  }
+  Bytes::from_array(out)
+}
+
+///|
+fn fuzz_assert_valid_subnegotiation_frame(
+  case_name : String,
+  option : Byte,
+  payload : Bytes,
+  seed : Int,
+) -> Unit raise {
+  let config = fuzz_subnegotiation_config(128)
+  let option_code = @telnet.OptionCode::{ value: option }
+  let item = @telnet.EncodeItem::Subnegotiation(@telnet.SubnegotiationEvent::{
+    option: option_code,
+    payload: fuzz_span_suffix(seed, payload),
+  })
+  let wire = fuzz_encode_item_to_bytes(@telnet.Encoder::canonical(), item, seed)
+  fuzz_assert_subnegotiation_case(
+    case_name,
+    config,
+    wire,
+    FuzzParseObservation::{
+      events: [FuzzObservedEvent::Subnegotiation(option_code, payload)],
+      complete: true,
+    },
+    seed,
+  )
+}
+
+///|
+fn fuzz_generated_subnegotiation_payload(seed : Int) -> Bytes {
+  let (rng, length) = fuzz_rng(seed).bounded_int(13)
+  fuzz_telnet_biased_bytes(seed + rng.state, length)
+}
+
+///|
+fn fuzz_generated_malformed_subnegotiation_wire(seed : Int) -> Bytes {
+  let (r1, kind) = fuzz_rng(seed).bounded_int(5)
+  let (r2, option) = r1.bounded_int(256)
+  let (r3, extra) = r2.bounded_int(5)
+  let payload = fuzz_no_iac_bytes(seed + r3.state, extra + 1)
+  match kind {
+    0 => fuzz_raw_subnegotiation_wire(None, Bytes::new(0), false)
+    1 => fuzz_raw_subnegotiation_wire(Some(byte(option)), payload, false)
+    2 => {
+      let out : Array[Byte] = []
+      out.push(byte(255))
+      out.push(byte(250))
+      out.push(byte(option))
+      out.push(byte(65))
+      out.push(byte(255))
+      out.push(byte(241))
+      out.push(byte(66))
+      out.push(byte(255))
+      out.push(byte(240))
+      Bytes::from_array(out)
+    }
+    3 => {
+      let out : Array[Byte] = []
+      out.push(byte(255))
+      out.push(byte(250))
+      out.push(byte(option))
+      out.push(byte(1))
+      out.push(byte(255))
+      out.push(byte(250))
+      out.push(byte((option + 1) % 256))
+      out.push(byte(255))
+      out.push(byte(240))
+      Bytes::from_array(out)
+    }
+    _ => {
+      let long_payload = fuzz_no_iac_bytes(seed + 991, 9)
+      fuzz_raw_subnegotiation_wire(Some(byte(option)), long_payload, true)
+    }
+  }
+}
+
+///|
+test "subnegotiation fuzz covers valid frames and streaming boundaries" {
+  fuzz_assert_valid_subnegotiation_frame(
+    "valid-empty-payload",
+    byte(24),
+    Bytes::new(0),
+    12000,
+  )
+  fuzz_assert_valid_subnegotiation_frame(
+    "valid-escaped-iac-and-se-bytes",
+    byte(31),
+    fuzz_bytes_from_ints([1, 255, 240, 255, 2]),
+    12001,
+  )
+  fuzz_assert_valid_subnegotiation_frame(
+    "valid-unknown-option-255",
+    byte(255),
+    fuzz_bytes_from_ints([255, 0, 13, 10]),
+    12002,
+  )
+  for iteration = 0; iteration < 20; iteration = iteration + 1 {
+    let (rng, option) = fuzz_rng(12100 + iteration).bounded_int(256)
+    fuzz_assert_valid_subnegotiation_frame(
+      "generated-valid-" + iteration.to_string(),
+      byte(option),
+      fuzz_generated_subnegotiation_payload(12100 + iteration + rng.state),
+      12100 + iteration,
+    )
+  }
+}
+
+///|
+test "subnegotiation fuzz covers malformed frames and oversized discard" {
+  let config = fuzz_subnegotiation_config(128)
+  fuzz_assert_subnegotiation_case(
+    "missing-option-after-sb",
+    config,
+    fuzz_bytes_from_ints([255, 250]),
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::IncompleteSubnegotiation,
+          offset: 1,
+          byte: None,
+          option: None,
+        }),
+      ],
+      complete: false,
+    },
+    12200,
+  )
+  fuzz_assert_subnegotiation_case(
+    "missing-se-after-payload",
+    config,
+    fuzz_bytes_from_ints([255, 250, 31, 65, 66]),
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::IncompleteSubnegotiation,
+          offset: 4,
+          byte: Some(byte(66)),
+          option: None,
+        }),
+      ],
+      complete: false,
+    },
+    12201,
+  )
+  fuzz_assert_subnegotiation_case(
+    "missing-se-after-escaped-iac",
+    config,
+    fuzz_bytes_from_ints([255, 250, 31, 65, 255, 255, 66]),
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::IncompleteSubnegotiation,
+          offset: 6,
+          byte: Some(byte(66)),
+          option: None,
+        }),
+      ],
+      complete: false,
+    },
+    12202,
+  )
+  fuzz_assert_subnegotiation_case(
+    "embedded-command-is-reported-and-omitted",
+    config,
+    fuzz_bytes_from_ints([255, 250, 31, 65, 255, 241, 66, 255, 240]),
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::InvalidCommandByte,
+          offset: 5,
+          byte: Some(byte(241)),
+          option: None,
+        }),
+        FuzzObservedEvent::Subnegotiation(
+          @telnet.OptionCode::{ value: byte(31) },
+          fuzz_bytes_from_ints([65, 66]),
+        ),
+      ],
+      complete: true,
+    },
+    12203,
+  )
+  fuzz_assert_subnegotiation_case(
+    "nested-sb-marker-is-reported-and-omitted",
+    config,
+    fuzz_bytes_from_ints([255, 250, 31, 1, 255, 250, 2, 255, 240]),
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::InvalidCommandByte,
+          offset: 5,
+          byte: Some(byte(250)),
+          option: None,
+        }),
+        FuzzObservedEvent::Subnegotiation(
+          @telnet.OptionCode::{ value: byte(31) },
+          fuzz_bytes_from_ints([1, 2]),
+        ),
+      ],
+      complete: true,
+    },
+    12204,
+  )
+  fuzz_assert_subnegotiation_case(
+    "oversized-payload-discards-until-se-then-resumes",
+    fuzz_subnegotiation_config(3),
+    fuzz_bytes_from_ints([255, 250, 31, 1, 2, 3, 4, 5, 255, 240, 65]),
+    FuzzParseObservation::{
+      events: [
+        FuzzObservedEvent::Error(@telnet.TelnetError::{
+          kind: @telnet.TelnetErrorKind::SubnegotiationTooLarge,
+          offset: 6,
+          byte: Some(byte(4)),
+          option: None,
+        }),
+        FuzzObservedEvent::Data(fuzz_bytes_from_ints([65])),
+      ],
+      complete: true,
+    },
+    12205,
+  )
+  for iteration = 0; iteration < 20; iteration = iteration + 1 {
+    fuzz_assert_subnegotiation_safe_case(
+      "generated-malformed-" + iteration.to_string(),
+      fuzz_subnegotiation_config(4 + iteration % 5),
+      fuzz_generated_malformed_subnegotiation_wire(12300 + iteration),
+      12300 + iteration,
+    )
+  }
+}
+
+///|
 test "parse encode stability fuzz covers targeted valid streams" {
   fuzz_assert_parse_encode_stable(fuzz_bytes_from_ints([]), 10100)
   fuzz_assert_parse_encode_stable(

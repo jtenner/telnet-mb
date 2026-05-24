@@ -17,39 +17,29 @@ Before and after code changes, follow `AGENTS.md`: run `moon info && moon fmt` a
 
 ## Latest completed slice
 
-- Completed slice 7, TELNET `IAC` escaping stress cases, on 2026-05-24.
-- Added focused deterministic tests for canonical data escaping, bare/trailing `IAC`, repeated `IAC` runs, escaped `IAC IAC` inside subnegotiation payloads, embedded `IAC` commands inside `SB ... SE`, and command bytes following `IAC` at chunk boundaries.
-- Added `IAC` stress assertion helpers that print case name, seed, length, wire bytes, and expected/observed normalized events for easy regression promotion.
+- Completed slice 8, subnegotiation fuzzer, on 2026-05-24.
+- Added deterministic valid `IAC SB <option> <payload> IAC SE` coverage using canonical encoder output, random option bytes, payloads biased around TELNET command bytes, escaped `IAC`, empty payloads, and unknown option `255`.
+- Added malformed coverage for missing option, missing `SE`, embedded commands, nested `SB` markers, generated malformed frames, and oversized payload discard/resume behavior.
+- Added subnegotiation assertion helpers that print case name, seed, length, `max_subnegotiation_bytes`, wire bytes, chunk pattern, and expected/observed normalized events for regression promotion.
 - No parser or encoder bugs were discovered, so no reduced regression fixes or wiki ambiguity notes were needed.
-- Remaining follow-ups: continue with slice 8 (subnegotiation fuzzer) and the still-active general failure-output refinement for non-`IAC` fuzz helpers.
+- Remaining follow-ups: continue with slice 9 (negotiation command sequence fuzzer) and the still-active general failure-output refinement for older non-subnegotiation fuzz helpers.
 - Reproduction seeds/details:
-  - Encoder data escaping: `11000` single data `0xff`, `11001` mixed data `[65, 255, 66, 255]`.
-  - Repeated `IAC` runs: `11101..11109` for run lengths `1..9`; odd lengths document incomplete trailing `IAC` and even lengths document escaped data bytes.
-  - Subnegotiation `IAC` handling: `11200` escaped payload `[1, 255, 2, 255]`, `11201` embedded `IAC NOP` excluded from payload with an `InvalidCommandByte`, `11202` incomplete subnegotiation after trailing `IAC`.
-  - Command-boundary cases: `11300` encoded `NOP`, `11301` data/command/data streaming splits, `11302` explicit chunks `[2, 1, 1]` for `[65, IAC, NOP, 66]`.
+  - Valid targeted frames: `12000` empty TERMINAL-TYPE payload, `12001` payload `[1, 255, 240, 255, 2]`, `12002` unknown option `255` with payload `[255, 0, 13, 10]`.
+  - Generated valid frames: `12100..12119`; each uses a generated option and payload and verifies all two-part splits plus one-byte chunks.
+  - Malformed named frames: `12200` missing option after `SB`, `12201` missing `SE`, `12202` missing `SE` after escaped `IAC`, `12203` embedded `IAC NOP`, `12204` nested `IAC SB`, `12205` oversized payload with `max_subnegotiation_bytes = 3` followed by normal data resume.
+  - Generated malformed frames: `12300..12319`; each verifies smoke/no-panic behavior plus one-byte and random chunk equivalence.
 - Commands run:
   - `git status --short && git log --oneline -5`
   - `find '*fuzz*'`
-  - `moon info && moon fmt && moon test` before implementation: 853 passed
-  - `moon info && moon fmt && moon test` after implementation: 856 passed
+  - `moon info && moon fmt && moon test` before implementation: 856 passed
+  - `moon info && moon fmt && moon test` after implementation: 858 passed
   - `git status --short && git diff --stat`
   - `git diff -- pkg.generated.mbti`
-  - `git diff -- telnet_fuzz_test.mbt | sed -n '1,260p'`
-  - `moon info && moon fmt && moon test` final verification after TODO update: 856 passed
+  - `git diff -- telnet_fuzz_test.mbt | sed -n '1,320p'`
+  - `git diff -- telnet_fuzz_test.mbt | sed -n '321,720p' && git diff -- agent-todo.md`
+  - `moon info && moon fmt && moon test` final verification after TODO update: 858 passed
 
 ## Active work slices
-
-### 8. Subnegotiation fuzzer
-
-- Generate `IAC SB <option> <payload> IAC SE` frames with random option and payload bytes.
-- Generate malformed frames: missing `SE`, missing option, embedded commands, escaped `IAC`, and nested `SB` markers.
-- Assert parser never panics and complete valid frames round-trip where supported.
-- Add regression tests for historically tricky subnegotiation cases.
-
-Acceptance criteria:
-
-- Subnegotiation parser has both valid and malformed fuzz coverage.
-- Tests include boundary and streaming splits inside payload and around `IAC SE`.
 
 ### 9. Negotiation command sequence fuzzer
 
