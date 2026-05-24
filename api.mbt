@@ -120,6 +120,13 @@ fn flush_data(data : Array[Byte], events : Array[Event]) -> Unit {
 }
 
 ///|
+fn append_span_to_array(out : Array[Byte], span : ByteSpan) -> Unit {
+  for i = 0; i < span.length; i = i + 1 {
+    out.push(span.bytes[span.start + i])
+  }
+}
+
+///|
 pub fn Parser::feed(self : Parser, chunk : Bytes) -> ParserFeedResult {
   self.feed_span(ByteSpan::{ bytes: chunk, start: 0, length: chunk.length() })
 }
@@ -142,6 +149,7 @@ fn push_preserved_data_events(
   span : ByteSpan,
   max_chunk_bytes : Int,
   coalescing : DataCoalescing,
+  borrow_full_span : Bool,
 ) -> Unit {
   let chunk_size = if coalescing == DataCoalescing::EmitImmediately {
     1
@@ -152,7 +160,7 @@ fn push_preserved_data_events(
   while consumed < span.length {
     let remaining = span.length - consumed
     let n = if remaining < chunk_size { remaining } else { chunk_size }
-    let event_span = if consumed == 0 && n == span.length {
+    let event_span = if borrow_full_span && consumed == 0 && n == span.length {
       ByteSpan::{ bytes: span.bytes, start: span.start, length: n }
     } else {
       ByteSpan::{
@@ -191,6 +199,7 @@ pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
       span,
       self.config.max_data_chunk_bytes,
       self.config.data_coalescing,
+      true,
     )
     return ParserFeedResult::{
       parser: Parser::{
@@ -254,6 +263,26 @@ pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
         if byte == b(255) {
           flush_data(data, events)
           mode = ParserMode::AfterIac
+        } else if self.config.cr_policy == CrPolicy::Preserve &&
+          self.config.max_data_chunk_bytes > 0 {
+          let run_start = i
+          let mut run_end = i + 1
+          while run_end < span.length &&
+                span.bytes[span.start + run_end] != b(255) {
+            run_end = run_end + 1
+          }
+          push_preserved_data_events(
+            events,
+            ByteSpan::{
+              bytes: span.bytes,
+              start: span.start + run_start,
+              length: run_end - run_start,
+            },
+            self.config.max_data_chunk_bytes,
+            self.config.data_coalescing,
+            false,
+          )
+          i = run_end - 1
         } else if self.config.max_data_chunk_bytes == 0 {
           events.push(
             err_event(
@@ -370,20 +399,49 @@ pub fn Parser::feed_span(self : Parser, span : ByteSpan) -> ParserFeedResult {
       ParserMode::InSubnegotiation(opt) =>
         if byte == b(255) {
           mode = ParserMode::InSubnegotiationAfterIac(opt)
-        } else if !discarding_subnegotiation {
-          sub.push(byte)
-          if sub.length() > self.config.max_subnegotiation_bytes {
-            events.push(
-              err_event(
-                TelnetErrorKind::SubnegotiationTooLarge,
-                absolute,
-                Some(byte),
-                None,
-              ),
-            )
-            sub.clear()
-            discarding_subnegotiation = true
+        } else {
+          let run_start = i
+          let mut run_end = i + 1
+          while run_end < span.length &&
+                span.bytes[span.start + run_end] != b(255) {
+            run_end = run_end + 1
           }
+          if !discarding_subnegotiation {
+            let run_len = run_end - run_start
+            let remaining_capacity = self.config.max_subnegotiation_bytes -
+              sub.length()
+            if run_len > remaining_capacity {
+              let overflow_index = if remaining_capacity < 0 {
+                0
+              } else {
+                remaining_capacity
+              }
+              if overflow_index >= 0 {
+                append_span_to_array(sub, ByteSpan::{
+                  bytes: span.bytes,
+                  start: span.start + run_start,
+                  length: overflow_index + 1,
+                })
+              }
+              events.push(
+                err_event(
+                  TelnetErrorKind::SubnegotiationTooLarge,
+                  absolute + overflow_index,
+                  Some(span.bytes[span.start + run_start + overflow_index]),
+                  None,
+                ),
+              )
+              sub.clear()
+              discarding_subnegotiation = true
+            } else {
+              append_span_to_array(sub, ByteSpan::{
+                bytes: span.bytes,
+                start: span.start + run_start,
+                length: run_len,
+              })
+            }
+          }
+          i = run_end - 1
         }
       ParserMode::InSubnegotiationAfterIac(opt) =>
         if byte == b(255) {
@@ -988,6 +1046,17 @@ pub fn Negotiator::apply(
 ) -> Negotiator {
   if transition.after == transition.before {
     return self
+  }
+  if self.states.length() == 0 {
+    return Negotiator::{ states: [transition.after] }
+  }
+  if self.states.length() == 1 {
+    let state = self.states[0]
+    if state.option == transition.after.option {
+      return Negotiator::{ states: [transition.after] }
+    } else {
+      return Negotiator::{ states: [state, transition.after] }
+    }
   }
   let out = Array::new()
   let mut found = false
