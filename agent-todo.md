@@ -15,6 +15,9 @@ Before and after code changes, follow `AGENTS.md`: run `moon info && moon fmt` a
 - Refinement for slice 4: include `finish` output in whole-vs-chunked comparisons so incomplete trailing `IAC`, negotiation verbs, pending CR, and unterminated subnegotiations are checked with identical final diagnostics.
 - Refinement for slice 4: assert every chunked feed consumes exactly the chunk length and that zero-length chunks leave the parser checkpoint unchanged, while allowing observable data coalescing differences to collapse in the normalized event stream.
 - Refinement for slice 5: when round-tripping canonical escaped data, explicitly include spans that are suffixes of larger `Bytes` so `ByteSpan::start`/`length` handling is covered.
+- 2026-05-24 slice 5 pre-implementation survey: repository is clean at `3b81f96 Add parser streaming fuzz property`; `telnet_fuzz_test.mbt` now has normalized event comparison helpers that can compare parser output without `ByteSpan` ownership false positives. Encoder round-trip fuzzing should use `Encoder::canonical()` with `EscapedData`, `Command`, `Negotiation`, and `Subnegotiation` items, but exclude `RawData` from canonical parse equivalence because raw data containing `IAC` deliberately bypasses escaping.
+- Refinement for slice 5: valid event streams should parse under a Preserve-CR config with sufficiently large data and subnegotiation limits so the property checks encoder/parser framing rather than newline policy or capacity-policy errors; generated data should still include CR/LF/NUL bytes as ordinary data in that mode.
+- Refinement for slice 5: include both single-item and multi-item encoded streams so adjacent data coalescing, command boundaries, option negotiation, subnegotiation payload escaping, and suffix `ByteSpan` handling are all covered by the same normalization path.
 - Refinement for slice 13: failure output should include the PRNG seed, iteration, generated length, byte array, parser config, and whether the case was whole-buffer or chunked.
 
 ## Operating rules for fuzzer agents
@@ -147,17 +150,36 @@ Remaining follow-ups:
 - Slice 13 should expand failure diagnostics to include config index, iteration, generated length, byte array, parser config, and whole/chunked mode; slice 4 currently prints only seed/length/split or random pattern before aborting.
 
 
-### 5. Encode-then-parse valid event corpus
+### 5. Encode-then-parse valid event corpus — completed 2026-05-24
 
-- Generate valid TELNET data/events/commands/options using a deterministic generator.
-- Encode generated events/frames and parse the resulting bytes.
-- Assert the parsed result is equivalent to the original, allowing documented normalizations.
-- Cover data bytes requiring `IAC` escaping.
+- Added deterministic encoder-to-parser round-trip fuzz tests in `telnet_fuzz_test.mbt`.
+- The property encodes valid canonical `EscapedData`, simple `Command`, `Negotiation`, and `Subnegotiation` items, parses the wire bytes with a Preserve-CR round-trip parser config, and compares normalized observations using the existing data-coalescing/`ByteSpan`-owning comparison helpers.
+- Coverage includes both single-item and multi-item streams so adjacent data coalescing, command boundaries, negotiation frames, subnegotiation boundaries, and payload IAC escaping are checked together.
+- Data and subnegotiation payload spans are suffixes of larger backing `Bytes`, exercising `ByteSpan::start` and `length` handling in encoder fast paths.
+- `RawData` remains intentionally excluded from generated canonical parse equivalence because raw data containing `IAC` deliberately bypasses TELNET escaping and can be interpreted as TELNET framing.
+- No parser or encoder bugs were discovered in this slice, so no reduced regression tests were needed.
+- Regression/repro seeds and generation details:
+  - Targeted seeds: `9101` canonical escaped data `[65, 255, 66]`; `9102` simple commands `NOP` and `AYT`; `9103` negotiations `WILL ECHO` and `DO NAWS`; `9104` subnegotiation option `31` payload `[0, 255, 240, 13, 0]`; `9105` mixed data/command/negotiation/subnegotiation stream with repeated escaped `IAC` bytes.
+  - Generated single-item cases use seeds `9200 + iteration`, `iteration = 0..39`.
+  - Generated five-item streams use item seeds `9300 + iteration * 5` through `9304 + iteration * 5`, `iteration = 0..23`; reproduction seed recorded as `9300 + iteration`.
+  - Generated payload lengths are bounded at 24 bytes for data and 20 bytes for subnegotiation payloads; payload bytes use the existing TELNET-biased generator.
+- Commands run for this slice:
+  - `git status --short && git log --oneline -10`
+  - `find '*fuzz*'`, `find '*_test.mbt'`, `find '*_wbtest.mbt'`
+  - `moon info && moon fmt && moon test` before implementation: 848 passed
+  - `moon info && moon fmt && moon test` after implementation: 850 passed
+  - `moon info && moon fmt && moon test && git diff -- pkg.generated.mbti && git status --short` final verification after TODO update: 850 passed; no `.mbti` diff
 
-Acceptance criteria:
+Acceptance criteria status:
 
-- Round-trip property covers data, command, option-negotiation, and subnegotiation cases.
-- Normalization exceptions are explicit and tested.
+- Round-trip property covers data, command, option-negotiation, and subnegotiation cases: done.
+- Normalization exceptions are explicit and tested: done; adjacent `Data` events are normalized, `ByteSpan` ownership is ignored, and `RawData` is documented as excluded from canonical equivalence.
+
+Remaining follow-ups:
+
+- Slice 6 can build on `fuzz_assert_encode_parse_roundtrip` for stable parse-then-encode normal-form checks.
+- Slice 7 should add focused `IAC` escaping stress regressions around trailing bare `IAC`, repeated `IAC` runs, subnegotiation payload escapes, and command boundaries.
+- Slice 13 should expand encode round-trip failure diagnostics to include encoded wire bytes and expected/observed normalized events, not just seed and wire length.
 
 ### 6. Parse-then-encode stability property
 

@@ -617,3 +617,248 @@ test "parser streaming fuzz covers generated fast paths and dense streams" {
     }
   }
 }
+
+///|
+fn fuzz_roundtrip_parser_config() -> @telnet.ParserConfig {
+  @telnet.ParserConfig::{
+    max_data_chunk_bytes: 128,
+    max_subnegotiation_bytes: 128,
+    cr_policy: @telnet.CrPolicy::Preserve,
+    data_coalescing: @telnet.DataCoalescing::CoalesceUntilCommand,
+    strict_commands: true,
+  }
+}
+
+///|
+fn fuzz_span_suffix(seed : Int, payload : Bytes) -> @telnet.ByteSpan {
+  let prefix_len = seed % 4 + 1
+  let out = Array::make(prefix_len + payload.length(), byte(0))
+  let mut rng = fuzz_rng(seed + 17)
+  for i = 0; i < prefix_len; i = i + 1 {
+    let (next, x) = rng.byte()
+    out[i] = x
+    rng = next
+  }
+  for i = 0; i < payload.length(); i = i + 1 {
+    out[prefix_len + i] = payload[i]
+  }
+  @telnet.ByteSpan::{
+    bytes: Bytes::from_array(out),
+    start: prefix_len,
+    length: payload.length(),
+  }
+}
+
+///|
+fn fuzz_simple_command(index : Int) -> @telnet.Command {
+  match index % 9 {
+    0 => @telnet.Command::NOP
+    1 => @telnet.Command::DM
+    2 => @telnet.Command::BRK
+    3 => @telnet.Command::IP
+    4 => @telnet.Command::AO
+    5 => @telnet.Command::AYT
+    6 => @telnet.Command::EC
+    7 => @telnet.Command::EL
+    _ => @telnet.Command::GA
+  }
+}
+
+///|
+fn fuzz_negotiation_verb(index : Int) -> @telnet.NegotiationVerb {
+  match index % 4 {
+    0 => @telnet.NegotiationVerb::Will
+    1 => @telnet.NegotiationVerb::Wont
+    2 => @telnet.NegotiationVerb::Do
+    _ => @telnet.NegotiationVerb::Dont
+  }
+}
+
+///|
+fn fuzz_roundtrip_payload(seed : Int, max_length : Int) -> Bytes {
+  let (rng, length) = fuzz_rng(seed).bounded_int(max_length + 1)
+  fuzz_telnet_biased_bytes(seed + rng.state, length)
+}
+
+///|
+fn fuzz_roundtrip_item(seed : Int) -> @telnet.EncodeItem {
+  let (r1, kind) = fuzz_rng(seed).bounded_int(4)
+  let (r2, n) = r1.bounded_int(256)
+  match kind {
+    0 =>
+      @telnet.EncodeItem::EscapedData(
+        fuzz_span_suffix(seed + 101, fuzz_roundtrip_payload(seed + 201, 24)),
+      )
+    1 => @telnet.EncodeItem::Command(fuzz_simple_command(n))
+    2 =>
+      @telnet.EncodeItem::Negotiation(@telnet.NegotiationEvent::{
+        verb: fuzz_negotiation_verb(n),
+        option: @telnet.OptionCode::{ value: byte(r2.state % 256) },
+      })
+    _ =>
+      @telnet.EncodeItem::Subnegotiation(@telnet.SubnegotiationEvent::{
+        option: @telnet.OptionCode::{ value: byte(n) },
+        payload: fuzz_span_suffix(
+          seed + 301,
+          fuzz_roundtrip_payload(seed + 401, 20),
+        ),
+      })
+  }
+}
+
+///|
+fn fuzz_encode_item_to_bytes(
+  encoder : @telnet.Encoder,
+  item : @telnet.EncodeItem,
+  seed : Int,
+) -> Bytes raise {
+  let required = encoder.required_capacity(item)
+  let output = Bytes::new(required)
+  match encoder.encode_item(item, output) {
+    Ok(result) => {
+      assert_true(result.bytes_written == required)
+      assert_true(result.required_capacity == required)
+    }
+    Err(_) => {
+      println("encode roundtrip unsupported item seed=" + seed.to_string())
+      abort("encode roundtrip unsupported item")
+    }
+  }
+  output
+}
+
+///|
+fn fuzz_push_expected_roundtrip_event(
+  out : Array[FuzzObservedEvent],
+  item : @telnet.EncodeItem,
+) -> Unit {
+  match item {
+    @telnet.EncodeItem::EscapedData(span) =>
+      fuzz_push_data_event(out, span.to_bytes())
+    @telnet.EncodeItem::Command(command) =>
+      out.push(FuzzObservedEvent::Command(command))
+    @telnet.EncodeItem::Negotiation(event) =>
+      out.push(FuzzObservedEvent::Negotiation(event))
+    @telnet.EncodeItem::Subnegotiation(event) =>
+      out.push(
+        FuzzObservedEvent::Subnegotiation(
+          event.option,
+          event.payload.to_bytes(),
+        ),
+      )
+    @telnet.EncodeItem::RawData(span) =>
+      fuzz_push_data_event(out, span.to_bytes())
+  }
+}
+
+///|
+fn fuzz_assert_encode_parse_roundtrip(
+  items : Array[@telnet.EncodeItem],
+  seed : Int,
+) -> Unit raise {
+  let encoder = @telnet.Encoder::canonical()
+  let wire_parts : Array[Byte] = []
+  let expected : Array[FuzzObservedEvent] = []
+  items.each(fn(item) raise {
+    let encoded = fuzz_encode_item_to_bytes(encoder, item, seed)
+    wire_parts.push_iter(encoded.to_array().iter())
+    fuzz_push_expected_roundtrip_event(expected, item)
+  })
+  let wire = Bytes::from_array(wire_parts)
+  let observed = fuzz_observe_whole(fuzz_roundtrip_parser_config(), wire)
+  if !observed.complete || observed.events != expected {
+    println(
+      "encode roundtrip mismatch seed=" +
+      seed.to_string() +
+      " wire_length=" +
+      wire.length().to_string(),
+    )
+    abort("encode roundtrip mismatch")
+  }
+}
+
+///|
+test "encoder parser roundtrip fuzz covers targeted valid frames" {
+  fuzz_assert_encode_parse_roundtrip(
+    [
+      @telnet.EncodeItem::EscapedData(
+        fuzz_span_suffix(9101, fuzz_bytes_from_ints([65, 255, 66])),
+      ),
+    ],
+    9101,
+  )
+  fuzz_assert_encode_parse_roundtrip(
+    [
+      @telnet.EncodeItem::Command(@telnet.Command::NOP),
+      @telnet.EncodeItem::Command(@telnet.Command::AYT),
+    ],
+    9102,
+  )
+  fuzz_assert_encode_parse_roundtrip(
+    [
+      @telnet.EncodeItem::Negotiation(@telnet.NegotiationEvent::{
+        verb: @telnet.NegotiationVerb::Will,
+        option: @telnet.OptionCode::{ value: byte(1) },
+      }),
+      @telnet.EncodeItem::Negotiation(@telnet.NegotiationEvent::{
+        verb: @telnet.NegotiationVerb::Do,
+        option: @telnet.OptionCode::{ value: byte(31) },
+      }),
+    ],
+    9103,
+  )
+  fuzz_assert_encode_parse_roundtrip(
+    [
+      @telnet.EncodeItem::Subnegotiation(@telnet.SubnegotiationEvent::{
+        option: @telnet.OptionCode::{ value: byte(31) },
+        payload: fuzz_span_suffix(
+          9104,
+          fuzz_bytes_from_ints([0, 255, 240, 13, 0]),
+        ),
+      }),
+    ],
+    9104,
+  )
+  fuzz_assert_encode_parse_roundtrip(
+    [
+      @telnet.EncodeItem::EscapedData(
+        fuzz_span_suffix(9105, fuzz_bytes_from_ints([13, 10, 255])),
+      ),
+      @telnet.EncodeItem::EscapedData(
+        fuzz_span_suffix(9106, fuzz_bytes_from_ints([0, 255, 13])),
+      ),
+      @telnet.EncodeItem::Command(@telnet.Command::GA),
+      @telnet.EncodeItem::Negotiation(@telnet.NegotiationEvent::{
+        verb: @telnet.NegotiationVerb::Dont,
+        option: @telnet.OptionCode::{ value: byte(255) },
+      }),
+      @telnet.EncodeItem::Subnegotiation(@telnet.SubnegotiationEvent::{
+        option: @telnet.OptionCode::{ value: byte(24) },
+        payload: fuzz_span_suffix(9107, fuzz_bytes_from_ints([1, 255, 255])),
+      }),
+    ],
+    9105,
+  )
+}
+
+///|
+test "encoder parser roundtrip fuzz covers generated valid streams" {
+  for iteration = 0; iteration < 40; iteration = iteration + 1 {
+    fuzz_assert_encode_parse_roundtrip(
+      [fuzz_roundtrip_item(9200 + iteration)],
+      9200 + iteration,
+    )
+  }
+  for iteration = 0; iteration < 24; iteration = iteration + 1 {
+    fuzz_assert_encode_parse_roundtrip(
+      [
+        fuzz_roundtrip_item(9300 + iteration * 5),
+        fuzz_roundtrip_item(9301 + iteration * 5),
+        fuzz_roundtrip_item(9302 + iteration * 5),
+        fuzz_roundtrip_item(9303 + iteration * 5),
+        fuzz_roundtrip_item(9304 + iteration * 5),
+      ],
+      9300 + iteration,
+    )
+  }
+}
