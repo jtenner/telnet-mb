@@ -315,6 +315,12 @@ pub(all) struct NawsSize {
 } derive(Eq, Debug)
 
 ///|
+pub(all) struct WindowSize {
+  width : UInt16
+  height : UInt16
+} derive(Eq, Debug)
+
+///|
 pub(all) enum EnvironmentVariableKind {
   Var
   UserVar
@@ -389,4 +395,81 @@ pub(all) enum OptionPayload {
   Charset(CharsetMessage)
   Linemode(LinemodeMessage)
   StartTls(StartTlsMessage)
+} derive(Eq, Debug)
+
+///|
+pub(all) enum SessionTextPolicy {
+  Preserve
+  ValidateNvt
+  NormalizeToLf
+} derive(Eq, Debug)
+
+///|
+pub(all) enum StartTlsState {
+  Cleartext
+  StartTlsRequested
+  StartTlsFollows
+  TlsActive
+  TlsRejected
+} derive(Eq, Debug)
+
+///|
+pub(all) struct OptionPolicyRule {
+  option : OptionCode
+  side : OptionSide
+  decision : PolicyDecision
+} derive(Eq, Debug)
+
+///|
+pub(all) struct SessionPolicy {
+  rules : Array[OptionPolicyRule]
+  default_local : PolicyDecision
+  default_remote : PolicyDecision
+} derive(Eq, Debug)
+
+///|
+pub(all) struct SessionConfig {
+  parser_config : ParserConfig
+  policy : SessionPolicy
+  incoming_text_policy : SessionTextPolicy
+  outgoing_text_policy : SessionTextPolicy
+  decode_known_options : Bool
+  emit_raw_subnegotiation : Bool
+  require_enabled_for_subnegotiation : Bool
+  reject_malformed_known_payloads : Bool
+  max_outbound_bytes : Int
+} derive(Eq, Debug)
+
+///|
+pub(all) enum SessionEvent {
+  Data(ByteSpan)
+  Command(Command)
+  NegotiationReceived(NegotiationEvent)
+  NegotiationSent(NegotiationEvent)
+  OptionEnabled(OptionSide, OptionCode)
+  OptionDisabled(OptionSide, OptionCode)
+  OptionRejected(OptionSide, OptionCode)
+  Subnegotiation(SubnegotiationEvent)
+  OptionPayload(OptionPayload)
+  StartTlsRequested
+  StartTlsFollows
+  TransportUpgradeRequired
+  Error(TelnetError)
+} derive(Eq, Debug)
+
+///|
+pub(all) enum SessionErrorKind {
+  OutputBufferTooSmall
+  EncodeFailed
+  MalformedOptionPayload
+  PolicyRejected
+} derive(Eq, Debug)
+
+///|
+pub(all) struct SessionError {
+  kind : SessionErrorKind
+  offset : Int
+  required_capacity : Int
+  telnet_error : TelnetError?
+  encode_error : EncodeError?
 } derive(Eq, Debug)

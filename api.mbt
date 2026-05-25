@@ -2230,3 +2230,690 @@ pub fn StartTlsMessage::encode(
   )
   Ok(EncodeResult::{ bytes_written: 1, required_capacity: 1 })
 }
+
+///|
+pub(all) struct Session {
+  parser : Parser
+  encoder : Encoder
+  negotiator : Negotiator
+  config : SessionConfig
+  tls_state : StartTlsState
+  window_size : WindowSize?
+  started : Bool
+} derive(Eq, Debug)
+
+///|
+pub(all) struct SessionReceiveResult {
+  session : Session
+  events : Array[SessionEvent]
+  bytes_written : Int
+  bytes_consumed : Int
+} derive(Eq, Debug)
+
+///|
+pub(all) struct SessionSendResult {
+  session : Session
+  events : Array[SessionEvent]
+  bytes_written : Int
+} derive(Eq, Debug)
+
+///|
+pub fn SessionPolicy::reject_all() -> SessionPolicy {
+  SessionPolicy::{
+    rules: [],
+    default_local: PolicyDecision::Reject,
+    default_remote: PolicyDecision::Reject,
+  }
+}
+
+///|
+pub fn SessionPolicy::permissive() -> SessionPolicy {
+  SessionPolicy::{
+    rules: [],
+    default_local: PolicyDecision::Accept,
+    default_remote: PolicyDecision::Accept,
+  }
+}
+
+///|
+pub fn SessionPolicy::decision_for(
+  self : SessionPolicy,
+  option : OptionCode,
+  side : OptionSide,
+) -> PolicyDecision {
+  for r in self.rules {
+    if r.option == option && r.side == side {
+      return r.decision
+    }
+  }
+  match side {
+    OptionSide::Local => self.default_local
+    OptionSide::Remote => self.default_remote
+  }
+}
+
+///|
+pub fn SessionPolicy::default_client() -> SessionPolicy {
+  SessionPolicy::{
+    rules: [
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(0) },
+        side: OptionSide::Remote,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(0) },
+        side: OptionSide::Local,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(1) },
+        side: OptionSide::Remote,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(3) },
+        side: OptionSide::Remote,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(3) },
+        side: OptionSide::Local,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(24) },
+        side: OptionSide::Local,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(31) },
+        side: OptionSide::Local,
+        decision: PolicyDecision::Accept,
+      },
+    ],
+    default_local: PolicyDecision::Reject,
+    default_remote: PolicyDecision::Reject,
+  }
+}
+
+///|
+pub fn SessionPolicy::default_server() -> SessionPolicy {
+  SessionPolicy::{
+    rules: [
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(0) },
+        side: OptionSide::Remote,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(0) },
+        side: OptionSide::Local,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(1) },
+        side: OptionSide::Local,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(3) },
+        side: OptionSide::Remote,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(3) },
+        side: OptionSide::Local,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(24) },
+        side: OptionSide::Remote,
+        decision: PolicyDecision::Accept,
+      },
+      OptionPolicyRule::{
+        option: OptionCode::{ value: b(31) },
+        side: OptionSide::Remote,
+        decision: PolicyDecision::Accept,
+      },
+    ],
+    default_local: PolicyDecision::Reject,
+    default_remote: PolicyDecision::Reject,
+  }
+}
+
+///|
+fn session_parser_config(config : SessionConfig) -> ParserConfig {
+  ParserConfig::{
+    max_data_chunk_bytes: config.parser_config.max_data_chunk_bytes,
+    max_subnegotiation_bytes: config.parser_config.max_subnegotiation_bytes,
+    cr_policy: CrPolicy::Preserve,
+    data_coalescing: config.parser_config.data_coalescing,
+    strict_commands: config.parser_config.strict_commands,
+  }
+}
+
+///|
+pub fn Session::default_config() -> SessionConfig {
+  SessionConfig::{
+    parser_config: Parser::default_config(),
+    policy: SessionPolicy::reject_all(),
+    incoming_text_policy: SessionTextPolicy::Preserve,
+    outgoing_text_policy: SessionTextPolicy::Preserve,
+    decode_known_options: true,
+    emit_raw_subnegotiation: true,
+    require_enabled_for_subnegotiation: false,
+    reject_malformed_known_payloads: false,
+    max_outbound_bytes: 8192,
+  }
+}
+
+///|
+pub fn Session::new(config : SessionConfig) -> Session {
+  Session::{
+    parser: Parser::new(session_parser_config(config)),
+    encoder: Encoder::canonical(),
+    negotiator: Negotiator::new(),
+    config,
+    tls_state: StartTlsState::Cleartext,
+    window_size: None,
+    started: false,
+  }
+}
+
+///|
+pub fn Session::default() -> Session {
+  Session::new(Session::default_config())
+}
+
+///|
+pub fn Session::state_for(self : Session, option : OptionCode) -> OptionState {
+  self.negotiator.state_for(option)
+}
+
+///|
+pub fn Session::local_option_enabled(
+  self : Session,
+  option : OptionCode,
+) -> Bool {
+  self.state_for(option).local_state == HalfState::Yes
+}
+
+///|
+pub fn Session::remote_option_enabled(
+  self : Session,
+  option : OptionCode,
+) -> Bool {
+  self.state_for(option).remote_state == HalfState::Yes
+}
+
+///|
+pub fn Session::incoming_binary(self : Session) -> Bool {
+  self.remote_option_enabled(OptionCode::{ value: b(0) })
+}
+
+///|
+pub fn Session::outgoing_binary(self : Session) -> Bool {
+  self.local_option_enabled(OptionCode::{ value: b(0) })
+}
+
+///|
+pub fn Session::get_window_size(self : Session) -> WindowSize? {
+  self.window_size
+}
+
+///|
+pub fn Session::mark_tls_active(self : Session) -> Session {
+  Session::{
+    parser: self.parser,
+    encoder: self.encoder,
+    negotiator: self.negotiator,
+    config: self.config,
+    tls_state: StartTlsState::TlsActive,
+    window_size: self.window_size,
+    started: self.started,
+  }
+}
+
+///|
+fn session_side_for_peer_verb(verb : NegotiationVerb) -> OptionSide {
+  match verb {
+    NegotiationVerb::Will | NegotiationVerb::Wont => OptionSide::Remote
+    NegotiationVerb::Do | NegotiationVerb::Dont => OptionSide::Local
+  }
+}
+
+///|
+fn session_error_from_encode(e : EncodeError) -> SessionError {
+  SessionError::{
+    kind: if e.kind == EncodeErrorKind::OutputBufferTooSmall {
+      SessionErrorKind::OutputBufferTooSmall
+    } else {
+      SessionErrorKind::EncodeFailed
+    },
+    offset: e.offset,
+    required_capacity: e.required_capacity,
+    telnet_error: None,
+    encode_error: Some(e),
+  }
+}
+
+///|
+fn session_malformed(e : TelnetError) -> SessionError {
+  SessionError::{
+    kind: SessionErrorKind::MalformedOptionPayload,
+    offset: e.offset,
+    required_capacity: 0,
+    telnet_error: Some(e),
+    encode_error: None,
+  }
+}
+
+///|
+fn copy_bytes(
+  src : Bytes,
+  src_start : Int,
+  len : Int,
+  dst : Bytes,
+  dst_start : Int,
+) -> Unit {
+  for i = 0; i < len; i = i + 1 {
+    setb(dst, dst_start + i, src[src_start + i])
+  }
+}
+
+///|
+fn session_encode_item_at(
+  encoder : Encoder,
+  item : EncodeItem,
+  output : Bytes,
+  offset : Int,
+) -> Result[Int, SessionError] {
+  let required = encoder.required_capacity(item)
+  if output.length() - offset < required {
+    return Err(SessionError::{
+      kind: SessionErrorKind::OutputBufferTooSmall,
+      offset,
+      required_capacity: offset + required,
+      telnet_error: None,
+      encode_error: None,
+    })
+  }
+  let tmp = Bytes::new(required)
+  match encoder.encode_item(item, tmp) {
+    Ok(r) => {
+      copy_bytes(tmp, 0, r.bytes_written, output, offset)
+      Ok(r.bytes_written)
+    }
+    Err(e) => Err(session_error_from_encode(e))
+  }
+}
+
+///|
+fn session_event_for_action(action : NegotiationAction) -> SessionEvent? {
+  match action {
+    NegotiationAction::Send(e) => Some(SessionEvent::NegotiationSent(e))
+    NegotiationAction::MarkEnabled(side, option) =>
+      Some(SessionEvent::OptionEnabled(side, option))
+    NegotiationAction::MarkDisabled(side, option) =>
+      Some(SessionEvent::OptionDisabled(side, option))
+    NegotiationAction::NotifyApplication(_) | NegotiationAction::NoAction =>
+      None
+  }
+}
+
+///|
+fn session_policy_accepts(
+  policy : SessionPolicy,
+  option : OptionCode,
+  side : OptionSide,
+) -> Bool {
+  policy.decision_for(option, side) == PolicyDecision::Accept
+}
+
+///|
+fn session_encode_negotiation_actions(
+  session : Session,
+  actions : Array[NegotiationAction],
+  output : Bytes,
+  written : Int,
+  events : Array[SessionEvent],
+) -> Result[Int, SessionError] {
+  let mut total = written
+  for action in actions {
+    match action {
+      NegotiationAction::Send(reply) => {
+        match
+          session_encode_item_at(
+            session.encoder,
+            EncodeItem::Negotiation(reply),
+            output,
+            total,
+          ) {
+          Ok(n) => total = total + n
+          Err(e) => return Err(e)
+        }
+        events.push(SessionEvent::NegotiationSent(reply))
+      }
+      _ =>
+        match session_event_for_action(action) {
+          Some(e) => events.push(e)
+          None => ()
+        }
+    }
+  }
+  Ok(total)
+}
+
+///|
+fn session_option_for_payload(payload : OptionPayload) -> OptionCode {
+  match payload {
+    OptionPayload::Raw(option, _) => option
+    OptionPayload::TerminalType(_) => OptionCode::{ value: b(24) }
+    OptionPayload::Naws(_) => OptionCode::{ value: b(31) }
+    OptionPayload::Linemode(_) => OptionCode::{ value: b(34) }
+    OptionPayload::Environment(_) => OptionCode::{ value: b(39) }
+    OptionPayload::Charset(_) => OptionCode::{ value: b(42) }
+    OptionPayload::StartTls(_) => OptionCode::{ value: b(46) }
+    OptionPayload::Empty => OptionCode::{ value: b(0) }
+  }
+}
+
+///|
+fn session_push_decoded_payload_events(
+  session : Session,
+  sb : SubnegotiationEvent,
+  events : Array[SessionEvent],
+) -> Result[Session, SessionError] {
+  let mut next = session
+  if session.config.emit_raw_subnegotiation {
+    events.push(SessionEvent::Subnegotiation(sb))
+  }
+  if session.config.decode_known_options {
+    match OptionPayload::decode(sb.option, sb.payload) {
+      Ok(payload) => {
+        events.push(SessionEvent::OptionPayload(payload))
+        match payload {
+          OptionPayload::StartTls(StartTlsMessage::StartTls) => {
+            next = Session::{
+              parser: next.parser,
+              encoder: next.encoder,
+              negotiator: next.negotiator,
+              config: next.config,
+              tls_state: StartTlsState::StartTlsRequested,
+              window_size: next.window_size,
+              started: next.started,
+            }
+            events.push(SessionEvent::StartTlsRequested)
+          }
+          OptionPayload::StartTls(StartTlsMessage::Follows) => {
+            next = Session::{
+              parser: next.parser,
+              encoder: next.encoder,
+              negotiator: next.negotiator,
+              config: next.config,
+              tls_state: StartTlsState::StartTlsFollows,
+              window_size: next.window_size,
+              started: next.started,
+            }
+            events.push(SessionEvent::StartTlsFollows)
+            events.push(SessionEvent::TransportUpgradeRequired)
+          }
+          OptionPayload::Naws(size) =>
+            if next.remote_option_enabled(OptionCode::{ value: b(31) }) {
+              next = Session::{
+                parser: next.parser,
+                encoder: next.encoder,
+                negotiator: next.negotiator,
+                config: next.config,
+                tls_state: next.tls_state,
+                window_size: Some(WindowSize::{
+                  width: size.columns,
+                  height: size.rows,
+                }),
+                started: next.started,
+              }
+            }
+          _ => ()
+        }
+      }
+      Err(e) =>
+        if session.config.reject_malformed_known_payloads {
+          return Err(session_malformed(e))
+        } else {
+          events.push(SessionEvent::Error(e))
+        }
+    }
+  }
+  Ok(next)
+}
+
+///|
+pub fn Session::receive(
+  self : Session,
+  chunk : Bytes,
+  output : Bytes,
+) -> Result[SessionReceiveResult, SessionError] {
+  let parsed = self.parser.feed(chunk)
+  let mut next = Session::{
+    parser: parsed.parser,
+    encoder: self.encoder,
+    negotiator: self.negotiator,
+    config: self.config,
+    tls_state: self.tls_state,
+    window_size: self.window_size,
+    started: true,
+  }
+  let events = Array::new()
+  let wire = Bytes::new(output.length())
+  let mut written = 0
+  if !self.started &&
+    session_policy_accepts(
+      next.config.policy,
+      OptionCode::{ value: b(31) },
+      OptionSide::Remote,
+    ) {
+    let transition = next.negotiator.request(
+      OptionCode::{ value: b(31) },
+      OptionSide::Remote,
+      true,
+    )
+    next = Session::{
+      parser: next.parser,
+      encoder: next.encoder,
+      negotiator: next.negotiator.apply(transition),
+      config: next.config,
+      tls_state: next.tls_state,
+      window_size: next.window_size,
+      started: next.started,
+    }
+    match
+      session_encode_negotiation_actions(
+        next,
+        transition.actions,
+        wire,
+        written,
+        events,
+      ) {
+      Ok(n) => written = n
+      Err(e) => return Err(e)
+    }
+  }
+  for event in parsed.events {
+    match event {
+      Event::Data(d) => {
+        events.push(SessionEvent::Data(d.span))
+        if next.local_option_enabled(OptionCode::{ value: b(1) }) {
+          match
+            session_encode_item_at(
+              next.encoder,
+              EncodeItem::EscapedData(d.span),
+              wire,
+              written,
+            ) {
+            Ok(nbytes) => written = written + nbytes
+            Err(e) => return Err(e)
+          }
+        }
+      }
+      Event::Command(c) => events.push(SessionEvent::Command(c.command))
+      Event::Error(e) => events.push(SessionEvent::Error(e))
+      Event::Negotiation(n) => {
+        events.push(SessionEvent::NegotiationReceived(n))
+        let side = session_side_for_peer_verb(n.verb)
+        let decision = next.config.policy.decision_for(n.option, side)
+        let transition = next.negotiator.receive(n, decision)
+        next = Session::{
+          parser: next.parser,
+          encoder: next.encoder,
+          negotiator: next.negotiator.apply(transition),
+          config: next.config,
+          tls_state: next.tls_state,
+          window_size: next.window_size,
+          started: next.started,
+        }
+        let mut sent_any = false
+        for action in transition.actions {
+          match action {
+            NegotiationAction::Send(reply) => {
+              match
+                session_encode_item_at(
+                  next.encoder,
+                  EncodeItem::Negotiation(reply),
+                  wire,
+                  written,
+                ) {
+                Ok(nbytes) => written = written + nbytes
+                Err(e) => return Err(e)
+              }
+              sent_any = true
+              events.push(SessionEvent::NegotiationSent(reply))
+            }
+            NegotiationAction::MarkEnabled(mark_side, option) =>
+              events.push(SessionEvent::OptionEnabled(mark_side, option))
+            NegotiationAction::MarkDisabled(mark_side, option) =>
+              events.push(SessionEvent::OptionDisabled(mark_side, option))
+            NegotiationAction::NotifyApplication(_)
+            | NegotiationAction::NoAction => ()
+          }
+        }
+        if decision == PolicyDecision::Reject && sent_any {
+          events.push(SessionEvent::OptionRejected(side, n.option))
+        }
+      }
+      Event::Subnegotiation(sb) =>
+        match session_push_decoded_payload_events(next, sb, events) {
+          Ok(s) => next = s
+          Err(e) => return Err(e)
+        }
+    }
+  }
+  copy_bytes(wire, 0, written, output, 0)
+  Ok(SessionReceiveResult::{
+    session: next,
+    events,
+    bytes_written: written,
+    bytes_consumed: parsed.bytes_consumed,
+  })
+}
+
+///|
+pub fn Session::send_data(
+  self : Session,
+  data : ByteSpan,
+  output : Bytes,
+) -> Result[SessionSendResult, SessionError] {
+  match
+    session_encode_item_at(
+      self.encoder,
+      EncodeItem::EscapedData(data),
+      output,
+      0,
+    ) {
+    Ok(n) =>
+      Ok(SessionSendResult::{ session: self, events: [], bytes_written: n })
+    Err(e) => Err(e)
+  }
+}
+
+///|
+pub fn Session::request_option(
+  self : Session,
+  option : OptionCode,
+  side : OptionSide,
+  enable : Bool,
+  output : Bytes,
+) -> Result[SessionSendResult, SessionError] {
+  let transition = self.negotiator.request(option, side, enable)
+  let next = Session::{
+    parser: self.parser,
+    encoder: self.encoder,
+    negotiator: self.negotiator.apply(transition),
+    config: self.config,
+    tls_state: self.tls_state,
+    window_size: self.window_size,
+    started: self.started,
+  }
+  let events = Array::new()
+  let wire = Bytes::new(output.length())
+  let mut written = 0
+  for action in transition.actions {
+    match action {
+      NegotiationAction::Send(reply) => {
+        match
+          session_encode_item_at(
+            next.encoder,
+            EncodeItem::Negotiation(reply),
+            wire,
+            written,
+          ) {
+          Ok(n) => written = written + n
+          Err(e) => return Err(e)
+        }
+        events.push(SessionEvent::NegotiationSent(reply))
+      }
+      _ =>
+        match session_event_for_action(action) {
+          Some(e) => events.push(e)
+          None => ()
+        }
+    }
+  }
+  copy_bytes(wire, 0, written, output, 0)
+  Ok(SessionSendResult::{ session: next, events, bytes_written: written })
+}
+
+///|
+pub fn Session::send_payload(
+  self : Session,
+  payload : OptionPayload,
+  output : Bytes,
+) -> Result[SessionSendResult, SessionError] {
+  let option = session_option_for_payload(payload)
+  let capacity = OptionPayload::required_capacity(payload)
+  let payload_bytes = Bytes::new(capacity)
+  match OptionPayload::encode(payload, payload_bytes) {
+    Ok(r) => {
+      let event = SubnegotiationEvent::{
+        option,
+        payload: ByteSpan::{
+          bytes: payload_bytes,
+          start: 0,
+          length: r.bytes_written,
+        },
+      }
+      match
+        session_encode_item_at(
+          self.encoder,
+          EncodeItem::Subnegotiation(event),
+          output,
+          0,
+        ) {
+        Ok(n) =>
+          Ok(SessionSendResult::{ session: self, events: [], bytes_written: n })
+        Err(e) => Err(e)
+      }
+    }
+    Err(e) => Err(session_error_from_encode(e))
+  }
+}

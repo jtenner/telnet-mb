@@ -44,13 +44,30 @@ Normative expectations to promote only with an approved production change:
 2. Too-small `required` with an output buffer whose length equals `required` can panic or write beyond the intended caller-reserved region; keep this as a documented gap instead of an executable panic test.
 3. Too-large `required` currently reports the inflated value and leaves trailing output bytes unchanged; decide whether that should remain a documented low-level contract or become a validation error.
 
-## Future session-level tests
+## Session-level coverage
 
-The core intentionally has no public `Session` type today. Current boundary characterization lives in `telnet_session_boundary_characterization_test.mbt` and proves that parser/codec policy is external.
+A public, transport-independent `Session` type now composes the parser,
+negotiator, encoder, option policy, and option codecs. Boundary characterization
+for low-level parser/codec independence remains in
+`telnet_session_boundary_characterization_test.mbt`; the executable session
+contract lives in `telnet_session_tdd_test.mbt`.
 
-Promote these scenarios if/when a `Session` abstraction is approved:
+Covered session scenarios include:
 
-1. Directional BINARY negotiation changes CR/NUL handling only for the negotiated data direction.
-2. `START_TLS FOLLOWS` blocks plaintext until a transport-upgrade callback succeeds.
-3. Policy callbacks decide option acceptance and receive decoded payloads without coupling to the raw parser.
-4. A session-level event stream can combine raw parser events, decoded option-payload events, negotiation actions, and transport-security state transitions.
+1. Streamable receive across arbitrary split IAC, negotiation, and
+   subnegotiation boundaries.
+2. Policy-driven replies to incoming WILL/WON'T/DO/DON'T requests.
+3. Opaque startup negotiation for built-in supported options represented by
+   policy, currently remote NAWS via `IAC DO NAWS` on the first receive call.
+4. Server-side local ECHO once local ECHO is negotiated.
+5. NAWS window-size tracking only after remote NAWS is negotiated.
+6. START_TLS `FOLLOWS` as a transport-upgrade boundary event, with the actual TLS
+   upgrade left to the adapter.
+7. Atomic output-buffer failure for generated negotiation/echo bytes.
+
+Open follow-up decisions:
+
+1. Whether directional BINARY should add session-level incoming/outgoing text
+   canonicalization beyond the current negotiated-state helpers.
+2. Whether additional built-in options should receive opaque startup negotiation
+   when accepted by policy, or remain explicit `Session::request_option` calls.

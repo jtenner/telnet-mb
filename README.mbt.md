@@ -8,11 +8,10 @@ intended to sit below your TCP/TLS/runtime code and above application policy.
 
 ## Status
 
-The core parser, encoder, option mapper, option-payload codecs, and negotiation
-state APIs are implemented and covered by a broad behavioral test corpus. The
-library deliberately does **not** provide a public `Session` abstraction yet:
-transport I/O, TLS handoff, credential handling, terminal rendering, and option
-acceptance policy remain application responsibilities.
+The core parser, encoder, option mapper, option-payload codecs, negotiation
+state APIs, and transport-independent `Session` composition layer are implemented
+and covered by a broad behavioral test corpus. Transport I/O, TLS handoff,
+credential handling, and terminal rendering remain application responsibilities.
 
 ## Features
 
@@ -20,6 +19,10 @@ acceptance policy remain application responsibilities.
 - TELNET encoder for data, commands, negotiation triplets, and subnegotiations.
 - Canonical IAC escaping for data and subnegotiation payloads.
 - WILL/WON'T/DO/DON'T negotiation state with explicit transition actions.
+- Transport-independent `Session` orchestration for parser, encoder,
+  negotiator, policy, and option codecs.
+- Policy-driven option support with automatic replies to peer requests and
+  opaque startup negotiation for built-in supported options such as remote NAWS.
 - RFC/IANA command and option mapping helpers.
 - Option-payload codecs for:
   - BINARY policy boundary
@@ -40,8 +43,56 @@ acceptance policy remain application responsibilities.
 - No built-in remote shell server.
 - No automatic credential handling.
 - No terminal emulator.
-- No bundled TLS implementation; START_TLS enforcement belongs to an adapter or
-  future session layer.
+- No bundled TLS implementation; `START_TLS FOLLOWS` is surfaced as a session
+  boundary event for an adapter to upgrade the transport.
+
+## Get started with `Session`
+
+Use `Session` when you want the library to manage TELNET protocol state while
+your application owns the transport. A `Session` value contains the parser,
+encoder, RFC 1143 negotiator, option policy, START_TLS state, and tracked option
+metadata such as NAWS window size. Treat it as an immutable state value: every
+receive or send helper returns the next `Session` that you keep for the next I/O
+turn.
+
+1. Build a `SessionConfig` or start from `Session::default()`.
+2. Allocate an output buffer large enough for generated TELNET replies.
+3. Call `session.receive(input, out)` for each inbound transport chunk.
+4. Write `out[0:result.bytes_written]` to your socket/TLS stream.
+5. Save `result.session` and handle `result.events`.
+
+```moonbit nocheck
+let mut session = @telnet.Session::default()
+let out = Bytes::new(8192)
+let input = Bytes::from_array([
+  255.to_byte(), 251.to_byte(), 1.to_byte(), // IAC WILL ECHO
+  72.to_byte(), 105.to_byte(),
+])
+
+match session.receive(input, out) {
+  Ok(result) => {
+    session = result.session
+    // Write the first result.bytes_written bytes of out to your transport.
+    // Then inspect result.events for Data, negotiation state, decoded payloads,
+    // START_TLS boundaries, and option enable/disable notifications.
+  }
+  Err(error) => {
+    // Grow the output buffer if error.kind is OutputBufferTooSmall, or report
+    // malformed/policy errors according to your adapter's rules.
+  }
+}
+```
+
+`SessionPolicy` declares which options this endpoint supports. Accepted peer
+requests are answered automatically. The default server policy also starts
+remote NAWS negotiation on the first receive call; after the peer enables NAWS
+and sends a valid NAWS payload, read the latest size with
+`session.get_window_size()`. If local ECHO is negotiated, received data is
+escaped and echoed into the output buffer for you. Use `send_data` for outbound
+application bytes, `request_option` for explicit WILL/DO state changes, and
+`send_payload` for subnegotiation payloads. `START_TLS FOLLOWS` is surfaced as a
+`TransportUpgradeRequired` event; perform the actual TLS upgrade outside the
+session and then call `session.mark_tls_active()`.
 
 ## Quick examples
 
@@ -123,30 +174,66 @@ let updated = negotiator.apply(transition)
 // Encode any NegotiationAction::Send replies and write them on your transport.
 ```
 
+### Use a Session
+
+`Session` composes parsing, negotiation, encoding, and option codecs without
+owning a socket. Keep the returned session between reads, write any generated
+bytes from the output buffer to your transport, and handle emitted events.
+
+```moonbit nocheck
+let session = @telnet.Session::new(@telnet.SessionConfig::{
+  parser_config: @telnet.Parser::default_config(),
+  policy: @telnet.SessionPolicy::default_server(),
+  incoming_text_policy: @telnet.SessionTextPolicy::Preserve,
+  outgoing_text_policy: @telnet.SessionTextPolicy::Preserve,
+  decode_known_options: true,
+  emit_raw_subnegotiation: true,
+  require_enabled_for_subnegotiation: false,
+  reject_malformed_known_payloads: false,
+  max_outbound_bytes: 8192,
+})
+let out = Bytes::new(64)
+let result = session.receive(Bytes::new(0), out)
+// With default_server policy, the first receive opaquely starts remote NAWS
+// negotiation by writing IAC DO NAWS into out.
+```
+
+For server-side ECHO, accept local ECHO in `SessionPolicy`. Once `Local ECHO` is
+negotiated, incoming data is escaped and echoed into the output buffer. For NAWS,
+accept remote NAWS in policy; the session negotiates it opaquely on first
+receive, and `Session::get_window_size()` is updated after remote NAWS is enabled
+and a valid NAWS payload is received.
+
 ## Main API areas
 
 - `Parser`: incremental byte-stream parser with `feed`, `feed_span`, `finish`,
   checkpoints, restore/reset, and configurable CR/coalescing/strictness policy.
 - `Encoder`: canonical and raw TELNET byte encoders with capacity reporting.
 - `Negotiator`: local/remote option-half state and explicit transition actions.
+- `Session`: streamable protocol-state composition with policy-driven option
+  support, generated output bytes, server-side ECHO, START_TLS boundary events,
+  and NAWS window-size tracking.
 - `OptionPayload`: decode/encode helpers for supported subnegotiation payloads.
 - `ByteSpan`: public byte-slice model used by parser events and encoders.
 - Mapping helpers: `Command`, `NegotiationVerb`, `OptionCode`, and `KnownOption`.
 
 ## Policy boundaries
 
-The parser reports protocol events; it does not make application security or
-session decisions.
+The parser reports protocol events; `Session` adds TELNET state and policy but
+still does not own transport or application security decisions.
 
-- `CrPolicy` controls NVT CR/LF/CR-NUL handling at parser construction time.
+- `CrPolicy` controls NVT CR/LF/CR-NUL handling at parser construction time;
+  `Session` internally preserves parser data bytes so BINARY-aware semantics can
+  be applied at the session layer.
+- `SessionPolicy` is the source of option support. Accepted incoming option
+  requests are answered automatically; built-in proactive support such as remote
+  NAWS is negotiated opaquely on the first `Session::receive` call.
 - BINARY negotiation is visible through negotiation state; it does not silently
   mutate parser configuration.
-- `START_TLS FOLLOWS` decodes as a payload, but plaintext blocking and transport
-  upgrade enforcement are application/session responsibilities.
+- `START_TLS FOLLOWS` decodes as a payload and is surfaced as
+  `TransportUpgradeRequired`; plaintext blocking and transport upgrade
+  enforcement remain adapter responsibilities.
 - Unknown or unsupported option payloads can be preserved as `OptionPayload::Raw`.
-
-Known future/session-level design notes live in
-[`docs/wiki/test-plan-negotiator-session.md`](docs/wiki/test-plan-negotiator-session.md).
 
 ## Supported options
 

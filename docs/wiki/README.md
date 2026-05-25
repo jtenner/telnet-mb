@@ -18,7 +18,7 @@ public APIs should point back here before code is merged.
 - [09-verification-corpus.md](09-verification-corpus.md) — provenance and coverage notes for the initial test-fixture corpus.
 - [10-fuzzing.md](10-fuzzing.md) — fuzzing properties, commands, reproduction workflow, and seed guidance.
 - [conformance-matrix.md](conformance-matrix.md) — requirement-to-test traceability matrix.
-- [api-contract.md](api-contract.md) — public parser, encoder, negotiator, mapping, and option-codec API skeleton.
+- [api-contract.md](api-contract.md) — public parser, encoder, negotiator, mapping, option-codec APIs, and the `Session` get-started guide.
 
 ## Rules for maintaining the wiki
 

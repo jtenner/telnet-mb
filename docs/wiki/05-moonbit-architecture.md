@@ -19,11 +19,19 @@ Future split if the code grows:
 - `Parser` incremental state machine.
 - `Encoder` helpers for data escaping and command construction.
 - `Negotiator` implementing RFC 1143.
-- `Policy` callbacks for accepting/rejecting options.
+- `SessionPolicy` tables for accepting/rejecting options.
+- `Session` composition over parser, encoder, negotiator, policy, and option
+  codecs; it remains transport-independent while handling generated replies,
+  built-in negotiated side effects such as local ECHO and remote NAWS window-size
+  tracking, and START_TLS handoff events.
 
 ## Design constraints
 
 - Accept byte chunks; never assume one read equals one TELNET message.
 - Avoid allocations for ordinary data where MoonBit APIs allow slicing/borrowing.
 - Preserve unknown commands/options in events so applications can log or pass through.
+- Treat accepted `SessionPolicy` rules as built-in option support. The session
+  responds to incoming negotiations automatically and may initiate opaque startup
+  negotiation for built-in supported options, but options become active only
+  after TELNET negotiation state reaches `Yes`.
 - Keep terminal-emulator and TCP concerns out of the core package.

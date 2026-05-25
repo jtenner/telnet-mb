@@ -313,6 +313,12 @@ pub fn OptionPayload::decode(OptionCode, ByteSpan) -> Result[Self, TelnetError]
 pub fn OptionPayload::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
 pub fn OptionPayload::required_capacity(Self) -> Int
 
+pub(all) struct OptionPolicyRule {
+  option : OptionCode
+  side : OptionSide
+  decision : PolicyDecision
+} derive(Eq, @debug.Debug)
+
 pub(all) enum OptionSide {
   Local
   Remote
@@ -402,12 +408,117 @@ pub(all) enum QueueBit {
   Opposite
 } derive(Eq, @debug.Debug)
 
+pub(all) struct Session {
+  parser : Parser
+  encoder : Encoder
+  negotiator : Negotiator
+  config : SessionConfig
+  tls_state : StartTlsState
+  window_size : WindowSize?
+  started : Bool
+} derive(Eq, @debug.Debug)
+pub fn Session::default() -> Self
+pub fn Session::default_config() -> SessionConfig
+pub fn Session::get_window_size(Self) -> WindowSize?
+pub fn Session::incoming_binary(Self) -> Bool
+pub fn Session::local_option_enabled(Self, OptionCode) -> Bool
+pub fn Session::mark_tls_active(Self) -> Self
+pub fn Session::new(SessionConfig) -> Self
+pub fn Session::outgoing_binary(Self) -> Bool
+pub fn Session::receive(Self, Bytes, Bytes) -> Result[SessionReceiveResult, SessionError]
+pub fn Session::remote_option_enabled(Self, OptionCode) -> Bool
+pub fn Session::request_option(Self, OptionCode, OptionSide, Bool, Bytes) -> Result[SessionSendResult, SessionError]
+pub fn Session::send_data(Self, ByteSpan, Bytes) -> Result[SessionSendResult, SessionError]
+pub fn Session::send_payload(Self, OptionPayload, Bytes) -> Result[SessionSendResult, SessionError]
+pub fn Session::state_for(Self, OptionCode) -> OptionState
+
+pub(all) struct SessionConfig {
+  parser_config : ParserConfig
+  policy : SessionPolicy
+  incoming_text_policy : SessionTextPolicy
+  outgoing_text_policy : SessionTextPolicy
+  decode_known_options : Bool
+  emit_raw_subnegotiation : Bool
+  require_enabled_for_subnegotiation : Bool
+  reject_malformed_known_payloads : Bool
+  max_outbound_bytes : Int
+} derive(Eq, @debug.Debug)
+
+pub(all) struct SessionError {
+  kind : SessionErrorKind
+  offset : Int
+  required_capacity : Int
+  telnet_error : TelnetError?
+  encode_error : EncodeError?
+} derive(Eq, @debug.Debug)
+
+pub(all) enum SessionErrorKind {
+  OutputBufferTooSmall
+  EncodeFailed
+  MalformedOptionPayload
+  PolicyRejected
+} derive(Eq, @debug.Debug)
+
+pub(all) enum SessionEvent {
+  Data(ByteSpan)
+  Command(Command)
+  NegotiationReceived(NegotiationEvent)
+  NegotiationSent(NegotiationEvent)
+  OptionEnabled(OptionSide, OptionCode)
+  OptionDisabled(OptionSide, OptionCode)
+  OptionRejected(OptionSide, OptionCode)
+  Subnegotiation(SubnegotiationEvent)
+  OptionPayload(OptionPayload)
+  StartTlsRequested
+  StartTlsFollows
+  TransportUpgradeRequired
+  Error(TelnetError)
+} derive(Eq, @debug.Debug)
+
+pub(all) struct SessionPolicy {
+  rules : Array[OptionPolicyRule]
+  default_local : PolicyDecision
+  default_remote : PolicyDecision
+} derive(Eq, @debug.Debug)
+pub fn SessionPolicy::decision_for(Self, OptionCode, OptionSide) -> PolicyDecision
+pub fn SessionPolicy::default_client() -> Self
+pub fn SessionPolicy::default_server() -> Self
+pub fn SessionPolicy::permissive() -> Self
+pub fn SessionPolicy::reject_all() -> Self
+
+pub(all) struct SessionReceiveResult {
+  session : Session
+  events : Array[SessionEvent]
+  bytes_written : Int
+  bytes_consumed : Int
+} derive(Eq, @debug.Debug)
+
+pub(all) struct SessionSendResult {
+  session : Session
+  events : Array[SessionEvent]
+  bytes_written : Int
+} derive(Eq, @debug.Debug)
+
+pub(all) enum SessionTextPolicy {
+  Preserve
+  ValidateNvt
+  NormalizeToLf
+} derive(Eq, @debug.Debug)
+
 pub(all) enum StartTlsMessage {
   StartTls
   Follows
 } derive(Eq, @debug.Debug)
 pub fn StartTlsMessage::decode(ByteSpan) -> Result[Self, TelnetError]
 pub fn StartTlsMessage::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
+
+pub(all) enum StartTlsState {
+  Cleartext
+  StartTlsRequested
+  StartTlsFollows
+  TlsActive
+  TlsRejected
+} derive(Eq, @debug.Debug)
 
 pub(all) struct SubnegotiationEvent {
   option : OptionCode
@@ -439,6 +550,11 @@ pub(all) enum TerminalTypeMessage {
 } derive(Eq, @debug.Debug)
 pub fn TerminalTypeMessage::decode(ByteSpan) -> Result[Self, TelnetError]
 pub fn TerminalTypeMessage::encode(Self, Bytes) -> Result[EncodeResult, EncodeError]
+
+pub(all) struct WindowSize {
+  width : UInt16
+  height : UInt16
+} derive(Eq, @debug.Debug)
 
 // Type aliases
 

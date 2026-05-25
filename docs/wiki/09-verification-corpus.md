@@ -58,34 +58,35 @@ Current coverage lives in:
 19. `telnet_encoder_edge_matrix_test.mbt`: encoder edge matrices for canonical RawData behavior, invalid span rejection, assume-capacity failures, wrong-`required` characterization, and negotiation verb helpers.
 20. `telnet_encode_parse_roundtrip_matrix_test.mbt`: encoder-to-parser roundtrip matrices for simple commands, negotiation frames, escaped data, and representative subnegotiations.
 21. `telnet_restore_semantics_test.mbt`: parser checkpoint/restore characterization, including resumable modes and non-restored buffered bytes.
-22. `telnet_session_boundary_characterization_test.mbt`: current no-Session boundary tests for BINARY CR policy, START_TLS security handoff, decoded SB derivation, and raw unsupported payloads.
-23. `telnet_iana_registry_characterization_test.mbt`: IANA registry characterization for mapped values, newer assigned-but-unmodeled values, and lossless unknown preservation.
-24. `telnet_canonicalization_contract_test.mbt`: decode-tolerant/encode-canonical behavior for CHARSET, LINEMODE, and raw payloads.
-25. `telnet_rawdata_invalid_span_contract_test.mbt`: RawData and safe invalid-span contract characterization.
-26. `telnet_docs_examples_test.mbt`: executable user-facing API examples for parsing, encoding, and NAWS decoding.
-27. `telnet_more_docs_examples_test.mbt`: additional docs-style examples for streaming parsing, carried parser state across split negotiations, negotiation policy flow with encoded reply actions, TTYPE encoding/decoding, environment decoding, START_TLS decode with external transport enforcement, canonical data escaping, incomplete-input finish handling, and unknown-option rejection.
-28. `telnet_interop_transcript_corpus_test.mbt`: small interop-inspired transcript corpus for BSD/telnetlib-like negotiation, MUD/private options, TTYPE cycling, NAWS resize streams, EOR/STATUS/X-DISPLAY-LOCATION/NEW-ENVIRON/AUTHENTICATION/ENCRYPTION/KERMIT/SEND-URL/FORWARD-X transcripts, and escaped IAC data.
-29. `telnet_native_scanner_stress_test.mbt`: scanner stress tests that exercise no-IAC fast paths, nonzero-start public `feed_span` edge cases, adjacent slices from the same backing buffer, dense IAC runs, separate-feed IAC recovery, and long subnegotiation scans on JS and native targets.
-30. `telnet_differential_reference_test.mbt`: compact differential reference parser checks for complete TELNET command/negotiation streams.
-31. `telnet_rfc1143_loop_characterization_test.mbt`: RFC1143 loop-prevention characterization for duplicate/refusal negotiation inputs and pending requests.
-32. `telnet_unknown_raw_payload_matrix_test.mbt`: raw payload preservation matrix for private/newer/unknown TELNET options.
-33. `telnet_iac_boundary_matrix_test.mbt`: IAC streaming boundary matrix for escaped data, commands, negotiations, subnegotiations, and dangling finish errors.
-34. `telnet_option_mapping_registry_samples_test.mbt`: exhaustive modeled `KnownOption` IANA registry mapping tests for codes `0..49` and `255`, plus unmodeled assigned-value preservation for `138..140`.
-35. `telnet_rfc1143_normative_characterization_test.mbt`: current negotiator characterization against RFC1143/Q-method edge areas, including apply independence, pending replies, duplicate commands, queued opposites, and documented normative gaps.
-36. `telnet_public_invalid_span_safety_test.mbt`: safe public-API characterization for raw invalid `ByteSpan` values, plus constructor-clamping expectations.
-37. `telnet_complexity_guardrail_test.mbt`: deterministic complexity guardrails for large data, dense IAC streams, negotiation storms, oversized subnegotiations, and command storms.
-38. `telnet_differential_subnegotiation_test.mbt`: independent complete-stream reference parser checks for subnegotiation transcripts and generated escaped-payload cases.
-39. `telnet_fuzz_test.mbt`: deterministic fuzz/property checks for parser, encoder, codecs, and negotiator invariants.
-40. `telnet_wbtest.mbt`: whitebox tests for internal implementation details.
-41. `telnet_feed_span_into_contract_test.mbt`: public `Parser::feed_span_into` reuse contract coverage for caller-owned event buffer clearing, stale-event exclusion, split-stream equivalence with `feed_span`, byte accounting, checkpoint parity, and incomplete-input completion.
-42. `telnet_cr_policy_split_matrix_test.mbt`: all-split CR policy matrix for CR NUL, CR LF, CR-before-data, bare CR finish, CR before commands/escaped IAC/negotiation, and CR around or inside subnegotiation framing.
-43. `telnet_negotiator_sequence_characterization_test.mbt`: stateful negotiator sequence characterization for request/accept/refuse flows, queued opposite requests, simultaneous local/remote enables, duplicate command storms, non-mutating transitions, bounded sends, and option independence.
-44. `telnet_invalid_command_split_matrix_test.mbt`: strict and lenient invalid-IAC split-boundary characterization for dangling IAC recovery, surrounding data, valid-command recovery, escaped-IAC data, subnegotiation-after-IAC recovery, and negotiation triplets.
-45. `telnet_bytespan_ownership_characterization_test.mbt`: public parser-output `ByteSpan` ownership characterization for borrowed no-IAC fast-path spans, copied chunked/buffered data, normalized CR output, and copied subnegotiation payloads.
-46. `telnet_named_fuzz_seed_regression_test.mbt`: named deterministic fuzz-seed regressions that manually assert dense escaped-IAC streams, nested-looking SB recovery, invalid-command recovery, CR split policy behavior, mixed negotiation/SB/data ordering, oversized-SB recovery, and unknown/private raw SB preservation through parser, codec, and encoder APIs.
-47. `telnet_target_parity_codec_encoder_test.mbt`: target-parity codec/encoder fixtures for NAWS min/max words, unknown raw high-byte payloads, ASCII boundary strings, and large `Bytes::make` raw/escaped payloads across wasm/js/native.
+22. `telnet_session_boundary_characterization_test.mbt`: low-level boundary tests proving parser/codec behavior remains transport-independent for BINARY CR policy, START_TLS security handoff, decoded SB derivation, and raw unsupported payloads.
+23. `telnet_session_tdd_test.mbt`: public Session contract tests for policy-driven negotiation, streamable receive, opaque remote-NAWS startup negotiation, server-side local ECHO, NAWS window-size tracking, START_TLS upgrade events, send helpers, and atomic output-buffer failure.
+24. `telnet_iana_registry_characterization_test.mbt`: IANA registry characterization for mapped values, newer assigned-but-unmodeled values, and lossless unknown preservation.
+25. `telnet_canonicalization_contract_test.mbt`: decode-tolerant/encode-canonical behavior for CHARSET, LINEMODE, and raw payloads.
+26. `telnet_rawdata_invalid_span_contract_test.mbt`: RawData and safe invalid-span contract characterization.
+27. `telnet_docs_examples_test.mbt`: executable user-facing API examples for parsing, encoding, and NAWS decoding.
+28. `telnet_more_docs_examples_test.mbt`: additional docs-style examples for streaming parsing, carried parser state across split negotiations, negotiation policy flow with encoded reply actions, TTYPE encoding/decoding, environment decoding, START_TLS decode with external transport enforcement, canonical data escaping, incomplete-input finish handling, and unknown-option rejection.
+29. `telnet_interop_transcript_corpus_test.mbt`: small interop-inspired transcript corpus for BSD/telnetlib-like negotiation, MUD/private options, TTYPE cycling, NAWS resize streams, EOR/STATUS/X-DISPLAY-LOCATION/NEW-ENVIRON/AUTHENTICATION/ENCRYPTION/KERMIT/SEND-URL/FORWARD-X transcripts, and escaped IAC data.
+30. `telnet_native_scanner_stress_test.mbt`: scanner stress tests that exercise no-IAC fast paths, nonzero-start public `feed_span` edge cases, adjacent slices from the same backing buffer, dense IAC runs, separate-feed IAC recovery, and long subnegotiation scans on JS and native targets.
+31. `telnet_differential_reference_test.mbt`: compact differential reference parser checks for complete TELNET command/negotiation streams.
+32. `telnet_rfc1143_loop_characterization_test.mbt`: RFC1143 loop-prevention characterization for duplicate/refusal negotiation inputs and pending requests.
+33. `telnet_unknown_raw_payload_matrix_test.mbt`: raw payload preservation matrix for private/newer/unknown TELNET options.
+34. `telnet_iac_boundary_matrix_test.mbt`: IAC streaming boundary matrix for escaped data, commands, negotiations, subnegotiations, and dangling finish errors.
+35. `telnet_option_mapping_registry_samples_test.mbt`: exhaustive modeled `KnownOption` IANA registry mapping tests for codes `0..49` and `255`, plus unmodeled assigned-value preservation for `138..140`.
+36. `telnet_rfc1143_normative_characterization_test.mbt`: current negotiator characterization against RFC1143/Q-method edge areas, including apply independence, pending replies, duplicate commands, queued opposites, and documented normative gaps.
+37. `telnet_public_invalid_span_safety_test.mbt`: safe public-API characterization for raw invalid `ByteSpan` values, plus constructor-clamping expectations.
+38. `telnet_complexity_guardrail_test.mbt`: deterministic complexity guardrails for large data, dense IAC streams, negotiation storms, oversized subnegotiations, and command storms.
+39. `telnet_differential_subnegotiation_test.mbt`: independent complete-stream reference parser checks for subnegotiation transcripts and generated escaped-payload cases.
+40. `telnet_fuzz_test.mbt`: deterministic fuzz/property checks for parser, encoder, codecs, and negotiator invariants.
+41. `telnet_wbtest.mbt`: whitebox tests for internal implementation details.
+42. `telnet_feed_span_into_contract_test.mbt`: public `Parser::feed_span_into` reuse contract coverage for caller-owned event buffer clearing, stale-event exclusion, split-stream equivalence with `feed_span`, byte accounting, checkpoint parity, and incomplete-input completion.
+43. `telnet_cr_policy_split_matrix_test.mbt`: all-split CR policy matrix for CR NUL, CR LF, CR-before-data, bare CR finish, CR before commands/escaped IAC/negotiation, and CR around or inside subnegotiation framing.
+44. `telnet_negotiator_sequence_characterization_test.mbt`: stateful negotiator sequence characterization for request/accept/refuse flows, queued opposite requests, simultaneous local/remote enables, duplicate command storms, non-mutating transitions, bounded sends, and option independence.
+45. `telnet_invalid_command_split_matrix_test.mbt`: strict and lenient invalid-IAC split-boundary characterization for dangling IAC recovery, surrounding data, valid-command recovery, escaped-IAC data, subnegotiation-after-IAC recovery, and negotiation triplets.
+46. `telnet_bytespan_ownership_characterization_test.mbt`: public parser-output `ByteSpan` ownership characterization for borrowed no-IAC fast-path spans, copied chunked/buffered data, normalized CR output, and copied subnegotiation payloads.
+47. `telnet_named_fuzz_seed_regression_test.mbt`: named deterministic fuzz-seed regressions that manually assert dense escaped-IAC streams, nested-looking SB recovery, invalid-command recovery, CR split policy behavior, mixed negotiation/SB/data ordering, oversized-SB recovery, and unknown/private raw SB preservation through parser, codec, and encoder APIs.
+48. `telnet_target_parity_codec_encoder_test.mbt`: target-parity codec/encoder fixtures for NAWS min/max words, unknown raw high-byte payloads, ASCII boundary strings, and large `Bytes::make` raw/escaped payloads across wasm/js/native.
 
-Additional non-executable plans live in `docs/wiki/test-plan-negotiator-session.md` for RFC1143 normative gaps, unsafe raw-span panic shapes, and future session-level behavior.
+Additional non-executable plans live in `docs/wiki/test-plan-negotiator-session.md` for RFC1143 normative gaps, unsafe raw-span panic shapes, and remaining session-level follow-up decisions.
 
 ## Regression guard
 
