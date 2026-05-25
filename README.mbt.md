@@ -181,6 +181,7 @@ owning a socket. Keep the returned session between reads, write any generated
 bytes from the output buffer to your transport, and handle emitted events.
 
 ```moonbit nocheck
+///|
 let session = @telnet.Session::new(@telnet.SessionConfig::{
   parser_config: @telnet.Parser::default_config(),
   policy: @telnet.SessionPolicy::default_server(),
@@ -192,7 +193,11 @@ let session = @telnet.Session::new(@telnet.SessionConfig::{
   reject_malformed_known_payloads: false,
   max_outbound_bytes: 8192,
 })
+
+///|
 let out = Bytes::new(64)
+
+///|
 let result = session.receive(Bytes::new(0), out)
 // With default_server policy, the first receive opaquely starts remote NAWS
 // negotiation by writing IAC DO NAWS into out.
