@@ -6,7 +6,7 @@ readme = "README.mbt.md"
 
 repository = "https://github.com/jtenner/tnmb"
 
-license = "Apache-2.0"
+license = "MIT"
 
 keywords = [ "telnet", "protocol", "moonbit", "rfc854" ]
 
